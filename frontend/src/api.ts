@@ -1,0 +1,148 @@
+const BASE = ''
+
+class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: 'include',
+    headers:
+      options.body && !(options.body instanceof FormData)
+        ? { 'Content-Type': 'application/json', ...options.headers }
+        : options.headers,
+    ...options,
+  })
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const data = await res.json()
+      detail = data.detail || detail
+    } catch {
+      // ignore
+    }
+    throw new ApiError(res.status, detail)
+  }
+  if (res.status === 204) return undefined as T
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return res.json()
+  }
+  return undefined as T
+}
+
+export const api = {
+  login: (password: string) =>
+    request<{ ok: boolean }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  authStatus: () => request<{ authenticated: boolean }>('/api/auth/status'),
+
+  searchSchools: (q: string, limit = 20) =>
+    request<School[]>(`/api/schools?q=${encodeURIComponent(q)}&limit=${limit}`),
+  getSchool: (id: string) => request<School>(`/api/schools/${id}`),
+  getSchoolReports: (id: string) => request<ReportListItem[]>(`/api/schools/${id}/reports`),
+
+  getChecklist: (category: string) =>
+    request<ChecklistItem[]>(`/api/checklist?category=${category}`),
+  addChecklistItem: (category: string, label: string) =>
+    request<ChecklistItem>('/api/checklist', {
+      method: 'POST',
+      body: JSON.stringify({ category, label }),
+    }),
+  deleteChecklistItem: (id: number) =>
+    request<{ ok: boolean }>(`/api/checklist/${id}`, { method: 'DELETE' }),
+
+  createReport: (payload: { school_id: string; visit_date: string; visitor_name: string }) =>
+    request<Report>('/api/reports', { method: 'POST', body: JSON.stringify(payload) }),
+  getReport: (id: number) => request<Report>(`/api/reports/${id}`),
+  deleteReport: (id: number) => request<{ ok: boolean }>(`/api/reports/${id}`, { method: 'DELETE' }),
+
+  uploadPhoto: (reportId: number, category: string, file: File) => {
+    const form = new FormData()
+    form.append('category', category)
+    form.append('file', file)
+    return request<ReportPhoto & { url: string }>(`/api/reports/${reportId}/photos`, {
+      method: 'POST',
+      body: form,
+    })
+  },
+  deletePhoto: (reportId: number, photoId: number) =>
+    request<{ ok: boolean }>(`/api/reports/${reportId}/photos/${photoId}`, { method: 'DELETE' }),
+
+  replaceNotes: (reportId: number, category: string, notes: NoteInput[]) =>
+    request<{ ok: boolean }>(`/api/reports/${reportId}/notes`, {
+      method: 'PUT',
+      body: JSON.stringify({ category, notes }),
+    }),
+
+  downloadUrl: (reportId: number) => `/api/reports/${reportId}/download`,
+}
+
+export type School = {
+  ministry_number: string
+  name: string
+  region?: string
+  address?: string
+  zone?: string
+  engineer?: string
+  supervisor?: string
+  lat?: number
+  lng?: number
+  building_type?: string
+  national_address?: string
+  ownership_type?: string
+}
+
+export type ChecklistItem = {
+  id: number
+  category: string
+  label: string
+  position: number
+}
+
+export type ReportPhoto = {
+  id: number
+  category: string
+  position: number
+  file_path: string
+}
+
+export type ReportNote = {
+  id: number
+  category: string
+  item: string
+  note: string
+  position: number
+}
+
+export type NoteInput = {
+  category: string
+  item: string
+  note: string
+  position: number
+}
+
+export type Report = {
+  id: number
+  school_id: string
+  visit_date: string
+  visitor_name?: string
+  created_at: string
+  photos: ReportPhoto[]
+  notes: ReportNote[]
+}
+
+export type ReportListItem = {
+  id: number
+  school_id: string
+  visit_date: string
+  visitor_name?: string
+  created_at: string
+}

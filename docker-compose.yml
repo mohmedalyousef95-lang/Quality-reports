@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - app_data:/app/data
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:-changeme}
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key}
+    restart: unless-stopped
+
+volumes:
+  app_data:
