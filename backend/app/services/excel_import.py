@@ -21,7 +21,15 @@ COLUMNS = [
 ]
 
 
-def import_schools(xlsx_path=SEED_XLSX_PATH) -> int:
+def import_schools(xlsx_path=SEED_XLSX_PATH, force: bool = False) -> int:
+    db = SessionLocal()
+    try:
+        if not force and db.query(School).first() is not None:
+            # Already populated — skip the 561-row upsert to keep boots fast.
+            return db.query(School).count()
+    finally:
+        db.close()
+
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
     db = SessionLocal()
     count = 0

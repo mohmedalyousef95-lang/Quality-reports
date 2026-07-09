@@ -50,7 +50,7 @@ async def reimport_schools(file: UploadFile = File(...)):
         tmp.write(await file.read())
         tmp_path = Path(tmp.name)
     try:
-        count = import_schools(tmp_path)
+        count = import_schools(tmp_path, force=True)
     finally:
         tmp_path.unlink(missing_ok=True)
     return {"imported": count}
