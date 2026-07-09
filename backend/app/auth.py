@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException, status
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-from .config import APP_PASSWORD, SECRET_KEY
+from .config import APP_PASSWORD, SECRET_KEY, AUTH_DISABLED
 
 COOKIE_NAME = "session"
 MAX_AGE_SECONDS = 60 * 60 * 24 * 30  # 30 days
@@ -26,6 +26,8 @@ def verify_session_token(token: str) -> bool:
 
 
 def require_auth(request: Request) -> None:
+    if AUTH_DISABLED:
+        return
     token = request.cookies.get(COOKIE_NAME)
     if not token or not verify_session_token(token):
         raise HTTPException(

@@ -35,6 +35,10 @@ def logout(response: Response):
 
 @router.get("/status")
 def auth_status(request: Request):
+    from ..config import AUTH_DISABLED
+
+    if AUTH_DISABLED:
+        return {"authenticated": True}
     token = request.cookies.get(COOKIE_NAME)
     authenticated = bool(token and verify_session_token(token))
     return {"authenticated": authenticated}

@@ -20,6 +20,9 @@ for _d in (DATA_DIR, PHOTOS_DIR):
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "changeme")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
 
+# Set AUTH_DISABLED=true to open the app without a login step (no password).
+AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "").strip().lower() in ("1", "true", "yes")
+
 # Database: use DATABASE_URL (Neon Postgres) in production, fall back to local SQLite.
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
