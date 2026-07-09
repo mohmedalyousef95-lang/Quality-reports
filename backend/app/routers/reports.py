@@ -1,8 +1,7 @@
-import shutil
-from pathlib import Path
+import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import require_auth
@@ -10,9 +9,13 @@ from ..database import get_db
 from ..models import School, Report, ReportPhoto, ReportNote
 from ..schemas import ReportCreate, ReportOut, ReportNotesReplace
 from ..constants import PHOTO_CATEGORIES, NOTE_CATEGORIES, MAX_PHOTOS_PER_CATEGORY
-from ..services.photo_storage import save_photo, delete_photo_file
+from ..services.photo_storage import (
+    save_photo,
+    delete_photo,
+    delete_report_photos,
+    load_photo_bytes,
+)
 from ..services.pptx_generator import generate_report_pptx
-from ..config import DATA_DIR
 
 router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[Depends(require_auth)])
 
@@ -55,7 +58,7 @@ def delete_report(report_id: int, db: Session = Depends(get_db)):
     report = _get_report_or_404(report_id, db)
     db.delete(report)
     db.commit()
-    shutil.rmtree(DATA_DIR / "photos" / str(report_id), ignore_errors=True)
+    delete_report_photos(report_id)
     return {"ok": True}
 
 
@@ -74,12 +77,12 @@ async def upload_photo(
     if existing_count >= MAX_PHOTOS_PER_CATEGORY:
         raise HTTPException(400, f"الحد الأقصى {MAX_PHOTOS_PER_CATEGORY} صور لهذا القسم")
 
-    dest_path = save_photo(file.file, report_id)
+    key = save_photo(file.file, report_id)
     photo = ReportPhoto(
         report_id=report_id,
         category=category,
         position=existing_count,
-        file_path=str(dest_path),
+        file_path=key,
     )
     db.add(photo)
     db.commit()
@@ -97,15 +100,20 @@ def get_photo_file(report_id: int, photo_id: int, db: Session = Depends(get_db))
     photo = db.get(ReportPhoto, photo_id)
     if photo is None or photo.report_id != report_id:
         raise HTTPException(404, "الصورة غير موجودة")
-    return FileResponse(photo.file_path)
+    data = load_photo_bytes(photo.file_path)
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.delete("/{report_id}/photos/{photo_id}")
-def delete_photo(report_id: int, photo_id: int, db: Session = Depends(get_db)):
+def delete_photo_endpoint(report_id: int, photo_id: int, db: Session = Depends(get_db)):
     photo = db.get(ReportPhoto, photo_id)
     if photo is None or photo.report_id != report_id:
         raise HTTPException(404, "الصورة غير موجودة")
-    delete_photo_file(photo.file_path)
+    delete_photo(photo.file_path)
     db.delete(photo)
     db.commit()
     return {"ok": True}
@@ -139,15 +147,14 @@ def download_report(report_id: int, db: Session = Depends(get_db)):
     report = _get_report_or_404(report_id, db)
     school = db.get(School, report.school_id)
 
-    output_dir = DATA_DIR / "generated"
-    output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{school.name}_{report.visit_date}.pptx".replace("/", "-")
-    output_path = output_dir / f"report_{report_id}.pptx"
+    tmp = tempfile.NamedTemporaryFile(suffix=".pptx", delete=False)
+    tmp.close()
 
-    generate_report_pptx(school, report, output_path)
+    generate_report_pptx(school, report, tmp.name)
 
     return FileResponse(
-        output_path,
+        tmp.name,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         filename=filename,
     )

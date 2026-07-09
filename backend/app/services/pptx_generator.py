@@ -1,3 +1,4 @@
+import io
 from collections import defaultdict
 from copy import deepcopy
 
@@ -11,6 +12,7 @@ from ..constants import (
     PHOTO_SLIDE_INDEX,
     NOTE_SLIDE_INDEX,
 )
+from .photo_storage import load_photo_bytes
 
 
 def generate_report_pptx(school, report, output_path) -> None:
@@ -65,7 +67,8 @@ def _fill_photo_slide(slide, photos) -> None:
     placeholders.sort(key=lambda ph: ph.placeholder_format.idx)
 
     for ph, photo in zip(placeholders, photos):
-        ph.insert_picture(str(photo.file_path))
+        image_bytes = load_photo_bytes(photo.file_path)
+        ph.insert_picture(io.BytesIO(image_bytes))
 
     for ph in placeholders[len(photos):]:
         ph._element.getparent().remove(ph._element)
