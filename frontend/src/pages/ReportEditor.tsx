@@ -13,6 +13,20 @@ export default function ReportEditor() {
   const [report, setReport] = useState<Report | null>(null)
   const [school, setSchool] = useState<School | null>(null)
   const [loading, setLoading] = useState(true)
+  const [downloading, setDownloading] = useState(false)
+
+  async function downloadReport() {
+    if (!report || !school) return
+    setDownloading(true)
+    try {
+      await api.downloadReport(report.id, `${school.name}_${report.visit_date}.pptx`)
+    } catch (err) {
+      alert('تعذّر إصدار التقرير، حاول مرة أخرى.')
+      console.error(err)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   useEffect(() => {
     load()
@@ -80,9 +94,14 @@ export default function ReportEditor() {
       </section>
 
       <div className="report-actions">
-        <a className="btn-primary sticky-cta" href={api.downloadUrl(report.id)}>
-          إصدار التقرير (PPTX)
-        </a>
+        <button
+          type="button"
+          className="btn-primary sticky-cta"
+          disabled={downloading}
+          onClick={downloadReport}
+        >
+          {downloading ? 'جارٍ إصدار التقرير...' : 'إصدار التقرير (PPTX)'}
+        </button>
         <button
           type="button"
           className="link-button"

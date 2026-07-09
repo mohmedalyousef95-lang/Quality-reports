@@ -75,9 +75,15 @@ export default function SchoolHistory() {
               >
                 فتح
               </button>
-              <a className="link-button" href={api.downloadUrl(r.id)}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() =>
+                  api.downloadReport(r.id, `${school.name}_${r.visit_date}.pptx`)
+                }
+              >
                 تنزيل
-              </a>
+              </button>
             </div>
           </li>
         ))}

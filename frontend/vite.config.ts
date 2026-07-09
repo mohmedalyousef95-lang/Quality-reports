@@ -9,6 +9,12 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      workbox: {
+        // Never serve the SPA shell for API requests — let them hit the
+        // network so file downloads and API calls work instead of being
+        // intercepted by the navigation fallback.
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       manifest: {
         name: 'تقارير الجودة',
         short_name: 'تقارير الجودة',

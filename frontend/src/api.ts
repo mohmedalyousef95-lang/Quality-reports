@@ -83,6 +83,24 @@ export const api = {
     }),
 
   downloadUrl: (reportId: number) => `/api/reports/${reportId}/download`,
+
+  // Fetch the generated PPTX as a blob and trigger a save. Using fetch (not a
+  // link navigation) avoids the PWA service worker intercepting the request.
+  downloadReport: async (reportId: number, filename: string) => {
+    const res = await fetch(`/api/reports/${reportId}/download`, {
+      credentials: 'include',
+    })
+    if (!res.ok) throw new Error(`download failed (${res.status})`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
 }
 
 export type School = {
