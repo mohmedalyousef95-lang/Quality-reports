@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: quality-reports
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    branch: claude/school-inspection-reports-jaa4de
+    plan: free
+    autoDeploy: true
+    envVars:
+      # Opens the app without a login step. Set to "false" and add
+      # APP_PASSWORD later to require a password.
+      - key: AUTH_DISABLED
+        value: "true"
+      # Auto-generated signing key for login sessions.
+      - key: SECRET_KEY
+        generateValue: true
+      # Cloudflare R2 bucket name (not secret).
+      - key: R2_BUCKET
+        value: quality-reports-photos
+      # Secrets — entered in the Render dashboard at deploy time.
+      - key: DATABASE_URL
+        sync: false
+      - key: R2_ENDPOINT_URL
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
