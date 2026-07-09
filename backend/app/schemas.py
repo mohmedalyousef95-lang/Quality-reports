@@ -64,6 +64,11 @@ class ReportPhotoOut(BaseModel):
     category: str
     position: int
     file_path: str
+    caption: Optional[str] = ""
+
+
+class PhotoCaptionUpdate(BaseModel):
+    caption: str = ""
 
 
 class ReportNoteOut(BaseModel):
@@ -84,6 +89,7 @@ class ReportOut(BaseModel):
     visit_date: date
     visitor_name: Optional[str] = None
     created_at: datetime
+    status: Optional[str] = "draft"
     photos: list[ReportPhotoOut] = []
     notes: list[ReportNoteOut] = []
 
@@ -96,3 +102,28 @@ class ReportListOut(BaseModel):
     visit_date: date
     visitor_name: Optional[str] = None
     created_at: datetime
+    status: Optional[str] = "draft"
+
+
+class ReportRow(BaseModel):
+    """A report enriched with its school info + progress, for the reports list."""
+
+    id: int
+    school_id: str
+    school_name: str
+    zone: Optional[str] = None
+    engineer: Optional[str] = None
+    supervisor: Optional[str] = None
+    visit_date: date
+    visitor_name: Optional[str] = None
+    status: str
+    photo_count: int
+    note_count: int
+    completion: int  # 0-100
+    created_at: datetime
+
+
+class FilterOptions(BaseModel):
+    zones: list[str]
+    engineers: list[str]
+    supervisors: list[str]

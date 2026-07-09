@@ -12,6 +12,10 @@ from ..constants import (
     COVER_SLIDE_INDEX,
     PHOTO_SLIDE_INDEX,
     NOTE_SLIDE_INDEX,
+    PHOTO_CATEGORIES,
+    NOTE_CATEGORIES,
+    PHOTO_CATEGORY_LABELS,
+    NOTE_CATEGORY_LABELS,
 )
 from .photo_storage import load_photo_bytes
 
@@ -35,7 +39,65 @@ def generate_report_pptx(school, report, output_path) -> None:
     for category, slide_idx in NOTE_SLIDE_INDEX.items():
         _fill_notes_slide(prs.slides[slide_idx], notes_by_category.get(category, []))
 
+    # Add the summary slide last, then move it to position 1 (after the cover),
+    # so the index-based fills above stay valid.
+    _add_summary_slide(prs, photos_by_category, notes_by_category)
+
     prs.save(output_path)
+
+
+def _add_summary_slide(prs, photos_by_category, notes_by_category) -> None:
+    from pptx.util import Pt, Inches
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    total_photos = sum(len(v) for v in photos_by_category.values())
+    total_notes = sum(len(v) for v in notes_by_category.values())
+    photo_sections = sum(1 for c in PHOTO_CATEGORIES if photos_by_category.get(c))
+    note_sections = sum(1 for c in NOTE_CATEGORIES if notes_by_category.get(c))
+    completion = round(
+        (photo_sections + note_sections) / (len(PHOTO_CATEGORIES) + len(NOTE_CATEGORIES)) * 100
+    )
+
+    # Reuse the "Title Only" layout used by the closing slide for a clean look.
+    layout = prs.slides[-1].slide_layout
+    slide = prs.slides.add_slide(layout)
+
+    if slide.shapes.title is not None:
+        slide.shapes.title.text = "ملخص الزيارة"
+
+    lines = [
+        f"نسبة اكتمال التقرير: {completion}%",
+        f"إجمالي الصور: {total_photos}    |    إجمالي الملاحظات: {total_notes}",
+        "",
+        "الصور حسب القسم:",
+    ]
+    for c in PHOTO_CATEGORIES:
+        lines.append(f"• {PHOTO_CATEGORY_LABELS[c]}: {len(photos_by_category.get(c, []))}")
+    lines.append("")
+    lines.append("الملاحظات حسب القسم:")
+    for c in NOTE_CATEGORIES:
+        lines.append(f"• {NOTE_CATEGORY_LABELS[c]}: {len(notes_by_category.get(c, []))}")
+
+    box = slide.shapes.add_textbox(Inches(0.8), Inches(1.8), Inches(11.5), Inches(5))
+    tf = box.text_frame
+    tf.word_wrap = True
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.alignment = PP_ALIGN.RIGHT
+        run = p.add_run()
+        run.text = line
+        run.font.size = Pt(18)
+        run.font.name = "Tajawal"
+        run.font.color.rgb = RGBColor(0x16, 0x21, 0x1F)
+        if line.endswith(":") or "نسبة اكتمال" in line:
+            run.font.bold = True
+
+    # Move the newly-appended slide to index 1 (right after the cover).
+    sld_lst = prs.slides._sldIdLst
+    ids = list(sld_lst)
+    sld_lst.remove(ids[-1])
+    sld_lst.insert(1, ids[-1])
 
 
 def _fill_cover(prs, school, report) -> None:
@@ -106,12 +168,47 @@ def _fill_photo_slide(slide, photos) -> None:
     ]
     placeholders.sort(key=lambda ph: ph.placeholder_format.idx)
 
+    captioned = []
     for ph, photo in zip(placeholders, photos):
         image_bytes = load_photo_bytes(photo.file_path)
+        left, top, width, height = ph.left, ph.top, ph.width, ph.height
         ph.insert_picture(io.BytesIO(image_bytes))
+        caption = getattr(photo, "caption", "") or ""
+        if caption.strip():
+            captioned.append((left, top, width, height, caption.strip()))
 
     for ph in placeholders[len(photos):]:
         ph._element.getparent().remove(ph._element)
+
+    # Caption bars are added after pictures so they render on top.
+    for left, top, width, height, caption in captioned:
+        _add_caption_bar(slide, left, top, width, height, caption)
+
+
+def _add_caption_bar(slide, left, top, width, height, text) -> None:
+    from pptx.util import Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    bar_h = Pt(20)
+    box = slide.shapes.add_textbox(left, top + height - bar_h, width, bar_h)
+    box.fill.solid()
+    box.fill.fore_color.rgb = RGBColor(0x0F, 0x76, 0x6E)
+    box.line.fill.background()
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.margin_top = Pt(1)
+    tf.margin_bottom = Pt(1)
+    tf.margin_left = Pt(4)
+    tf.margin_right = Pt(4)
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = text
+    run.font.size = Pt(10)
+    run.font.bold = True
+    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    run.font.name = "Tajawal"
 
 
 def _fill_notes_slide(slide, notes) -> None:

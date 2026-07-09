@@ -100,6 +100,15 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
     onChange(photos.filter((p) => p.id !== photoId))
   }
 
+  const captionTimers = useRef<Record<number, number>>({})
+  function handleCaption(photoId: number, value: string) {
+    onChange(photos.map((p) => (p.id === photoId ? { ...p, caption: value } : p)))
+    window.clearTimeout(captionTimers.current[photoId])
+    captionTimers.current[photoId] = window.setTimeout(() => {
+      api.updateCaption(reportId, photoId, value).catch(() => {})
+    }, 500)
+  }
+
   return (
     <div className="photo-section" ref={sectionRef} tabIndex={-1}>
       <div className="section-header">
@@ -113,16 +122,25 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
         {photos.map((photo) => {
           const url = `/api/reports/${reportId}/photos/${photo.id}/file`
           return (
-            <div className="photo-thumb" key={photo.id}>
-              <img src={url} alt="" onClick={() => setPreview(url)} />
-              <button
-                type="button"
-                className="photo-remove"
-                onClick={() => handleDelete(photo.id)}
-                aria-label="حذف الصورة"
-              >
-                ×
-              </button>
+            <div className="photo-item" key={photo.id}>
+              <div className="photo-thumb">
+                <img src={url} alt="" onClick={() => setPreview(url)} />
+                <button
+                  type="button"
+                  className="photo-remove"
+                  onClick={() => handleDelete(photo.id)}
+                  aria-label="حذف الصورة"
+                >
+                  ×
+                </button>
+              </div>
+              <input
+                type="text"
+                className="photo-caption-input"
+                placeholder="تعليق (اختياري)"
+                value={photo.caption ?? ''}
+                onChange={(e) => handleCaption(photo.id, e.target.value)}
+              />
             </div>
           )
         })}

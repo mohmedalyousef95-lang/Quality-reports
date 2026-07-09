@@ -46,6 +46,8 @@ export const api = {
 
   searchSchools: (q: string, limit = 20) =>
     request<School[]>(`/api/schools?q=${encodeURIComponent(q)}&limit=${limit}`),
+  nearbySchools: (lat: number, lng: number, limit = 15) =>
+    request<School[]>(`/api/schools/nearby?lat=${lat}&lng=${lng}&limit=${limit}`),
   getSchool: (id: string) => request<School>(`/api/schools/${id}`),
   getSchoolReports: (id: string) => request<ReportListItem[]>(`/api/schools/${id}/reports`),
 
@@ -75,6 +77,27 @@ export const api = {
   },
   deletePhoto: (reportId: number, photoId: number) =>
     request<{ ok: boolean }>(`/api/reports/${reportId}/photos/${photoId}`, { method: 'DELETE' }),
+  updateCaption: (reportId: number, photoId: number, caption: string) =>
+    request<{ ok: boolean }>(`/api/reports/${reportId}/photos/${photoId}/caption`, {
+      method: 'PUT',
+      body: JSON.stringify({ caption }),
+    }),
+
+  listReports: (params: {
+    search?: string
+    status?: string
+    zone?: string
+    engineer?: string
+    supervisor?: string
+    sort?: string
+  }) => {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) qs.set(k, v)
+    })
+    return request<ReportRow[]>(`/api/reports?${qs.toString()}`)
+  },
+  getReportFilters: () => request<FilterOptions>('/api/reports/filters'),
 
   replaceNotes: (reportId: number, category: string, notes: NoteInput[]) =>
     request<{ ok: boolean }>(`/api/reports/${reportId}/notes`, {
@@ -130,6 +153,7 @@ export type ReportPhoto = {
   category: string
   position: number
   file_path: string
+  caption?: string
 }
 
 export type ReportNote = {
@@ -153,6 +177,7 @@ export type Report = {
   visit_date: string
   visitor_name?: string
   created_at: string
+  status?: string
   photos: ReportPhoto[]
   notes: ReportNote[]
 }
@@ -163,4 +188,27 @@ export type ReportListItem = {
   visit_date: string
   visitor_name?: string
   created_at: string
+  status?: string
+}
+
+export type ReportRow = {
+  id: number
+  school_id: string
+  school_name: string
+  zone?: string
+  engineer?: string
+  supervisor?: string
+  visit_date: string
+  visitor_name?: string
+  status: string
+  photo_count: number
+  note_count: number
+  completion: number
+  created_at: string
+}
+
+export type FilterOptions = {
+  zones: string[]
+  engineers: string[]
+  supervisors: string[]
 }

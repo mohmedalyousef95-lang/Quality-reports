@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Home from './pages/Home'
 import ReportEditor from './pages/ReportEditor'
 import SchoolHistory from './pages/SchoolHistory'
+import ReportsList from './pages/ReportsList'
 import IosInstallHint from './components/IosInstallHint'
 import AppBar from './components/AppBar'
 import ToastHost from './components/Toast'
@@ -37,6 +38,7 @@ export default function App() {
       <AppBar />
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/reports" element={<ReportsList />} />
         <Route path="/reports/:id" element={<ReportEditor />} />
         <Route path="/schools/:id" element={<SchoolHistory />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -12,12 +14,43 @@ router = APIRouter(prefix="/api/schools", tags=["schools"], dependencies=[Depend
 
 
 @router.get("", response_model=list[SchoolOut])
-def search_schools(q: str = "", limit: int = 20, db: Session = Depends(get_db)):
+def search_schools(
+    q: str = "",
+    zone: str = "",
+    engineer: str = "",
+    supervisor: str = "",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
     query = db.query(School)
     if q:
         like = f"%{q}%"
         query = query.filter(or_(School.name.ilike(like), School.ministry_number.ilike(like)))
+    if zone:
+        query = query.filter(School.zone == zone)
+    if engineer:
+        query = query.filter(School.engineer == engineer)
+    if supervisor:
+        query = query.filter(School.supervisor == supervisor)
     return query.order_by(School.name).limit(limit).all()
+
+
+def _haversine_km(lat1, lng1, lat2, lng2) -> float:
+    r = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    )
+    return r * 2 * math.asin(math.sqrt(a))
+
+
+@router.get("/nearby", response_model=list[SchoolOut])
+def nearby_schools(lat: float, lng: float, limit: int = 15, db: Session = Depends(get_db)):
+    schools = db.query(School).filter(School.lat.isnot(None), School.lng.isnot(None)).all()
+    ranked = sorted(schools, key=lambda s: _haversine_km(lat, lng, s.lat, s.lng))
+    return ranked[:limit]
 
 
 @router.get("/{ministry_number}", response_model=SchoolOut)

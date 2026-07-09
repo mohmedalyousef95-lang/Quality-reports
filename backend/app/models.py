@@ -44,6 +44,9 @@ class Report(Base):
     visit_date = Column(Date, default=date.today, nullable=False)
     visitor_name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="draft", index=True)  # draft | completed
+    completed_at = Column(DateTime)
 
     school = relationship("School", back_populates="reports")
     photos = relationship(
@@ -68,6 +71,7 @@ class ReportPhoto(Base):
     category = Column(String, nullable=False)
     position = Column(Integer, default=0)
     file_path = Column(String, nullable=False)
+    caption = Column(String, default="")
 
     report = relationship("Report", back_populates="photos")
 

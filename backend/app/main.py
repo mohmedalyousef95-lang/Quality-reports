@@ -7,10 +7,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import Base, engine
+from .migrations import run_migrations
 from .services.excel_import import import_schools, seed_checklist_items
 from .routers import auth_router, schools, checklist, reports
 
 Base.metadata.create_all(bind=engine)
+run_migrations()
 import_schools()
 seed_checklist_items()
 

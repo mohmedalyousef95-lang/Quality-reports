@@ -36,7 +36,12 @@ export default function Home() {
 
   return (
     <div className="page">
-      <h1 className="page-title">تقرير جديد</h1>
+      <div className="home-head">
+        <h1 className="page-title">تقرير جديد</h1>
+        <button type="button" className="btn-secondary" onClick={() => navigate('/reports')}>
+          📋 كل التقارير
+        </button>
+      </div>
 
       <div className="field">
         <label>المدرسة</label>

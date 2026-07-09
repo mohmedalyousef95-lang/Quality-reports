@@ -4,6 +4,7 @@ export default function AppBar() {
   const navigate = useNavigate()
   const location = useLocation()
   const isHome = location.pathname === '/'
+  const isReports = location.pathname === '/reports'
 
   return (
     <header className="app-bar">
@@ -24,17 +25,14 @@ export default function AppBar() {
         تقارير الجودة
       </div>
 
-      {!isHome ? (
-        <button
-          type="button"
-          className="app-bar-btn"
-          aria-label="الرئيسية"
-          onClick={() => navigate('/')}
-        >
-          الرئيسية
+      {isReports ? (
+        <button type="button" className="app-bar-btn" onClick={() => navigate('/')}>
+          + تقرير
         </button>
       ) : (
-        <span className="app-bar-spacer" />
+        <button type="button" className="app-bar-btn" onClick={() => navigate('/reports')}>
+          التقارير
+        </button>
       )}
     </header>
   )

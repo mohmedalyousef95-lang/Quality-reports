@@ -190,6 +190,22 @@ button, input {
   padding: 4px 2px;
 }
 
+.nearest-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--primary);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nearest-btn:disabled {
+  opacity: 0.6;
+}
+
 .autocomplete-list {
   list-style: none;
   margin: 4px 0 0;
@@ -318,8 +334,24 @@ button, input {
 
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.photo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.photo-caption-input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
 }
 
 .photo-thumb {
@@ -501,6 +533,129 @@ button, input {
 .empty-hint {
   color: var(--text-muted);
   padding: 12px 0;
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.select {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.results-count {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+
+.report-card {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: stretch;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.report-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-card-name {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.report-card-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.report-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  max-width: 180px;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+}
+
+.progress-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 34px;
+}
+
+.report-card-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.status-completed {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+
+.status-draft {
+  background: #fdecc8;
+  color: #97600a;
+}
+
+.report-card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.link-button.danger {
+  color: var(--danger);
 }
 
 .ios-hint {
