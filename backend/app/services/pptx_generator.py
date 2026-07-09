@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
+from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
 
 from ..config import TEMPLATE_PATH
@@ -45,6 +46,7 @@ def _fill_cover(prs, school, report) -> None:
         "اسم المدرسة": school.name or "",
         "تاريخ الزيارة": visit_date_str,
     }
+    target_tf = None
     for shape in slide.shapes:
         if not shape.has_text_frame:
             continue
@@ -55,7 +57,45 @@ def _fill_cover(prs, school, report) -> None:
             for label, value in values.items():
                 if first_run.text.startswith(label):
                     first_run.text = first_run.text.rstrip() + " " + value
+                    target_tf = shape.text_frame
                     break
+
+    if target_tf is not None:
+        # Auto-fit so the added school-info lines never overflow the box.
+        try:
+            target_tf.word_wrap = True
+            target_tf.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
+        except Exception:
+            pass
+        extra = [
+            ("الرقم الوزاري", school.ministry_number),
+            ("المنطقة", school.region),
+            ("الزون", school.zone),
+            ("المهندس المرافق", school.engineer),
+            ("المشرف", school.supervisor),
+            ("العنوان", school.address),
+        ]
+        last_p = target_tf.paragraphs[-1]._p
+        for label, value in extra:
+            if not value:
+                continue
+            new_p = deepcopy(last_p)
+            _set_paragraph_text(new_p, f"{label}: {value}")
+            last_p.addnext(new_p)
+            last_p = new_p
+
+
+def _set_paragraph_text(p_elem, text: str) -> None:
+    runs = p_elem.findall(qn("a:r"))
+    if not runs:
+        return
+    for r in runs[1:]:
+        p_elem.remove(r)
+    t = runs[0].find(qn("a:t"))
+    if t is None:
+        t = runs[0].makeelement(qn("a:t"), {})
+        runs[0].append(t)
+    t.text = text
 
 
 def _fill_photo_slide(slide, photos) -> None:

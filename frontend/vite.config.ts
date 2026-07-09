@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'og-image.png'],
       workbox: {
         // Never serve the SPA shell for API requests — let them hit the
         // network so file downloads and API calls work instead of being
@@ -16,26 +16,21 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
       },
       manifest: {
+        id: '/',
         name: 'تقارير الجودة',
         short_name: 'تقارير الجودة',
         description: 'مولّد تقارير جودة الصيانة والاستعداد المدرسي',
         start_url: '/',
+        scope: '/',
         display: 'standalone',
-        background_color: '#0b1220',
+        background_color: '#0f766e',
         theme_color: '#0f766e',
         dir: 'rtl',
         lang: 'ar',
         icons: [
-          {
-            src: 'icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
     }),

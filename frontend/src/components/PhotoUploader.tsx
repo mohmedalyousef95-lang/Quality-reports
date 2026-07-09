@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type ReportPhoto } from '../api'
 import { MAX_PHOTOS_PER_CATEGORY } from '../constants'
 
@@ -12,26 +12,87 @@ type Props = {
 
 export default function PhotoUploader({ reportId, category, label, photos, onChange }: Props) {
   const [uploading, setUploading] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [pasteHint, setPasteHint] = useState('')
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
+  const sectionRef = useRef<HTMLDivElement>(null)
 
   const remaining = MAX_PHOTOS_PER_CATEGORY - photos.length
 
-  async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return
+  async function uploadMany(files: File[]) {
+    if (files.length === 0) return
     setUploading(true)
     try {
-      const toUpload = Array.from(files).slice(0, remaining)
+      const toUpload = files.slice(0, remaining)
       const uploaded: ReportPhoto[] = []
       for (const file of toUpload) {
         const result = await api.uploadPhoto(reportId, category, file)
         uploaded.push(result)
       }
       onChange([...photos, ...uploaded])
+    } catch {
+      alert('تعذّر رفع بعض الصور، حاول مرة أخرى.')
     } finally {
       setUploading(false)
-      if (inputRef.current) inputRef.current.value = ''
+      if (cameraRef.current) cameraRef.current.value = ''
+      if (galleryRef.current) galleryRef.current.value = ''
     }
   }
+
+  function handleInput(files: FileList | null) {
+    if (files) uploadMany(Array.from(files))
+  }
+
+  // Paste multiple images at once (clipboard button + Ctrl/Cmd+V on the section)
+  async function pasteFromClipboard() {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        setPasteHint('اللصق غير مدعوم في هذا المتصفح — استخدم الاستوديو')
+        return
+      }
+      const items = await navigator.clipboard.read()
+      const files: File[] = []
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith('image/'))
+        if (type) {
+          const blob = await item.getType(type)
+          const ext = type.split('/')[1] || 'png'
+          files.push(new File([blob], `pasted-${Date.now()}-${files.length}.${ext}`, { type }))
+        }
+      }
+      if (files.length === 0) {
+        setPasteHint('لا توجد صور في الحافظة')
+        return
+      }
+      setPasteHint('')
+      await uploadMany(files)
+    } catch {
+      setPasteHint('تعذّر قراءة الحافظة — امنح الإذن أو استخدم Ctrl+V')
+    }
+  }
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      const files: File[] = []
+      for (const it of items) {
+        if (it.type.startsWith('image/')) {
+          const f = it.getAsFile()
+          if (f) files.push(f)
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault()
+        uploadMany(files)
+      }
+    }
+    el.addEventListener('paste', onPaste as EventListener)
+    return () => el.removeEventListener('paste', onPaste as EventListener)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos, remaining])
 
   async function handleDelete(photoId: number) {
     await api.deletePhoto(reportId, photoId)
@@ -39,13 +100,14 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
   }
 
   return (
-    <div className="photo-section">
+    <div className="photo-section" ref={sectionRef} tabIndex={-1}>
       <div className="section-header">
         <h3>{label}</h3>
         <span className="count-badge">
           {photos.length}/{MAX_PHOTOS_PER_CATEGORY}
         </span>
       </div>
+
       <div className="photo-grid">
         {photos.map((photo) => (
           <div className="photo-thumb" key={photo.id}>
@@ -60,22 +122,57 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
             </button>
           </div>
         ))}
-        {remaining > 0 && (
-          <label className="photo-add">
-            {uploading ? '...' : '+ إضافة'}
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              hidden
-              disabled={uploading}
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-          </label>
-        )}
       </div>
+
+      {remaining > 0 && (
+        <div className="photo-actions">
+          {/* Camera is the primary action */}
+          <button
+            type="button"
+            className="photo-btn photo-btn-primary"
+            disabled={uploading}
+            onClick={() => cameraRef.current?.click()}
+          >
+            📷 التقاط صورة
+          </button>
+          <button
+            type="button"
+            className="photo-btn"
+            disabled={uploading}
+            onClick={() => galleryRef.current?.click()}
+          >
+            🖼️ من الاستوديو
+          </button>
+          <button
+            type="button"
+            className="photo-btn"
+            disabled={uploading}
+            onClick={pasteFromClipboard}
+          >
+            📋 لصق صور
+          </button>
+
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => handleInput(e.target.files)}
+          />
+          <input
+            ref={galleryRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => handleInput(e.target.files)}
+          />
+        </div>
+      )}
+
+      {uploading && <div className="upload-hint">جارٍ رفع الصور...</div>}
+      {pasteHint && <div className="upload-hint">{pasteHint}</div>}
     </div>
   )
 }
