@@ -8,8 +8,14 @@ DB_PATH = DATA_DIR / "app.db"
 TEMPLATE_PATH = Path(__file__).resolve().parent / "assets" / "template.pptx"
 SEED_XLSX_PATH = Path(__file__).resolve().parent / "assets" / "schools_seed.xlsx"
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+# Best-effort local dirs (only needed for the SQLite/local-disk fallback).
+# On read-only or restricted-user hosts these may fail; that's fine when
+# DATABASE_URL + R2 are configured, so don't crash startup over it.
+for _d in (DATA_DIR, PHOTOS_DIR):
+    try:
+        _d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "changeme")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
