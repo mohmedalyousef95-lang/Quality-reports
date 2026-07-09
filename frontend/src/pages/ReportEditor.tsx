@@ -4,6 +4,7 @@ import { api, type Report, type School, type ReportPhoto } from '../api'
 import { PHOTO_CATEGORIES, PHOTO_CATEGORY_LABELS, NOTE_CATEGORIES, NOTE_CATEGORY_LABELS } from '../constants'
 import PhotoUploader from '../components/PhotoUploader'
 import ChecklistSection from '../components/ChecklistSection'
+import { showToast } from '../components/Toast'
 
 export default function ReportEditor() {
   const { id } = useParams<{ id: string }>()
@@ -20,8 +21,9 @@ export default function ReportEditor() {
     setDownloading(true)
     try {
       await api.downloadReport(report.id, `${school.name}_${report.visit_date}.pptx`)
+      showToast('تم إصدار التقرير', 'success')
     } catch (err) {
-      alert('تعذّر إصدار التقرير، حاول مرة أخرى.')
+      showToast('تعذّر إصدار التقرير، حاول مرة أخرى', 'error')
       console.error(err)
     } finally {
       setDownloading(false)

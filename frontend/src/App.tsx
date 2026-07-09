@@ -6,6 +6,8 @@ import Home from './pages/Home'
 import ReportEditor from './pages/ReportEditor'
 import SchoolHistory from './pages/SchoolHistory'
 import IosInstallHint from './components/IosInstallHint'
+import AppBar from './components/AppBar'
+import ToastHost from './components/Toast'
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
@@ -32,12 +34,14 @@ export default function App() {
   return (
     <>
       <IosInstallHint />
+      <AppBar />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/reports/:id" element={<ReportEditor />} />
         <Route path="/schools/:id" element={<SchoolHistory />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ToastHost />
     </>
   )
 }

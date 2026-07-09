@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type ReportPhoto } from '../api'
 import { MAX_PHOTOS_PER_CATEGORY } from '../constants'
+import { showToast } from './Toast'
 
 type Props = {
   reportId: number
@@ -12,7 +13,7 @@ type Props = {
 
 export default function PhotoUploader({ reportId, category, label, photos, onChange }: Props) {
   const [uploading, setUploading] = useState(false)
-  const [pasteHint, setPasteHint] = useState('')
+  const [preview, setPreview] = useState<string | null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
   const sectionRef = useRef<HTMLDivElement>(null)
@@ -30,8 +31,9 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
         uploaded.push(result)
       }
       onChange([...photos, ...uploaded])
+      if (uploaded.length > 0) showToast(`تم رفع ${uploaded.length} صورة`, 'success')
     } catch {
-      alert('تعذّر رفع بعض الصور، حاول مرة أخرى.')
+      showToast('تعذّر رفع بعض الصور، حاول مرة أخرى', 'error')
     } finally {
       setUploading(false)
       if (cameraRef.current) cameraRef.current.value = ''
@@ -47,7 +49,7 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
   async function pasteFromClipboard() {
     try {
       if (!navigator.clipboard || !navigator.clipboard.read) {
-        setPasteHint('اللصق غير مدعوم في هذا المتصفح — استخدم الاستوديو')
+        showToast('اللصق غير مدعوم في هذا المتصفح — استخدم الاستوديو', 'error')
         return
       }
       const items = await navigator.clipboard.read()
@@ -61,13 +63,12 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
         }
       }
       if (files.length === 0) {
-        setPasteHint('لا توجد صور في الحافظة')
+        showToast('لا توجد صور في الحافظة', 'info')
         return
       }
-      setPasteHint('')
       await uploadMany(files)
     } catch {
-      setPasteHint('تعذّر قراءة الحافظة — امنح الإذن أو استخدم Ctrl+V')
+      showToast('تعذّر قراءة الحافظة — امنح الإذن أو استخدم Ctrl+V', 'error')
     }
   }
 
@@ -109,19 +110,22 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
       </div>
 
       <div className="photo-grid">
-        {photos.map((photo) => (
-          <div className="photo-thumb" key={photo.id}>
-            <img src={`/api/reports/${reportId}/photos/${photo.id}/file`} alt="" />
-            <button
-              type="button"
-              className="photo-remove"
-              onClick={() => handleDelete(photo.id)}
-              aria-label="حذف الصورة"
-            >
-              ×
-            </button>
-          </div>
-        ))}
+        {photos.map((photo) => {
+          const url = `/api/reports/${reportId}/photos/${photo.id}/file`
+          return (
+            <div className="photo-thumb" key={photo.id}>
+              <img src={url} alt="" onClick={() => setPreview(url)} />
+              <button
+                type="button"
+                className="photo-remove"
+                onClick={() => handleDelete(photo.id)}
+                aria-label="حذف الصورة"
+              >
+                ×
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       {remaining > 0 && (
@@ -172,7 +176,15 @@ export default function PhotoUploader({ reportId, category, label, photos, onCha
       )}
 
       {uploading && <div className="upload-hint">جارٍ رفع الصور...</div>}
-      {pasteHint && <div className="upload-hint">{pasteHint}</div>}
+
+      {preview && (
+        <div className="lightbox" onClick={() => setPreview(null)}>
+          <img src={preview} alt="" />
+          <button type="button" className="lightbox-close" aria-label="إغلاق">
+            ×
+          </button>
+        </div>
+      )}
     </div>
   )
 }
