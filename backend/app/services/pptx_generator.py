@@ -1,11 +1,9 @@
 import io
 from collections import defaultdict
-from copy import deepcopy
 
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE
-from pptx.oxml.ns import qn
 
 from ..config import TEMPLATE_PATH
 from ..constants import (
@@ -36,14 +34,35 @@ def generate_report_pptx(school, report, output_path) -> None:
     for note in sorted(report.notes, key=lambda n: n.position):
         notes_by_category[note.category].append(note)
 
-    for category, slide_idx in NOTE_SLIDE_INDEX.items():
-        _fill_notes_slide(prs.slides[slide_idx], notes_by_category.get(category, []))
+    # One combined notes table (section header rows + item rows) replaces the
+    # template's six per-category note slides.
+    notes_layout = prs.slides[min(NOTE_SLIDE_INDEX.values())].slide_layout
+    _add_combined_notes_slides(prs, notes_by_category, notes_layout)
 
-    # Add the school-summary slide last, then move it to position 1 (after the
-    # cover), so the index-based fills above stay valid.
-    _add_summary_slide(prs, school, report)
+    for idx in sorted(NOTE_SLIDE_INDEX.values(), reverse=True):
+        _delete_slide(prs, idx)
+
+    # Order is now: cover, photos ×4, closing, combined-notes…
+    # Move the closing slide back to the end, then insert the school-info
+    # slide right after the cover.
+    _move_slide(prs, from_index=5, to_index=len(prs.slides) - 1)
+    _add_school_info_slide(prs, school, report)
 
     prs.save(output_path)
+
+
+def _delete_slide(prs, index) -> None:
+    sld_id_lst = prs.slides._sldIdLst
+    slides = list(sld_id_lst)
+    prs.part.drop_rel(slides[index].rId)
+    sld_id_lst.remove(slides[index])
+
+
+def _move_slide(prs, from_index, to_index) -> None:
+    sld_id_lst = prs.slides._sldIdLst
+    slides = list(sld_id_lst)
+    sld_id_lst.remove(slides[from_index])
+    sld_id_lst.insert(to_index, slides[from_index])
 
 
 def _extract_locality(address) -> str:
@@ -56,40 +75,42 @@ def _extract_locality(address) -> str:
     return ""
 
 
-def _add_summary_slide(prs, school, report) -> None:
-    from pptx.util import Pt, Inches, Emu
+def _add_school_info_slide(prs, school, report) -> None:
+    from pptx.util import Inches
     from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    from pptx.enum.text import PP_ALIGN
 
-    visit_date_str = report.visit_date.strftime("%Y-%m-%d") if report.visit_date else ""
     region = school.region or ""
     locality = _extract_locality(school.address)
-    region_field = " - ".join([x for x in [region, locality] if x]) or region
+    location = " - ".join([x for x in [region, locality] if x]) or region
 
     rows = [
-        ("الرقم الوزاري", school.ministry_number or ""),
         ("اسم المدرسة", school.name or ""),
-        ("المنطقة / الحي", region_field),
+        ("الرقم الوزاري", school.ministry_number or ""),
+        ("الموقع", location),
         ("الزون", school.zone or ""),
         ("مهندس الزون", school.engineer or ""),
-        ("المشرف", school.supervisor or ""),
-        ("المقاول المسؤول", getattr(report, "contractor", "") or "—"),
-        ("تاريخ الزيارة", visit_date_str),
+        ("اسم المشرف", school.supervisor or ""),
     ]
+    contractor = (getattr(report, "contractor", "") or "").strip()
+    if contractor:
+        rows.append(("المقاول المسؤول", contractor))
 
     layout = prs.slides[-1].slide_layout  # "Title Only" (theme background)
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title is not None:
-        slide.shapes.title.text = "ملخص الزيارة"
+        slide.shapes.title.text = "معلومات المدرسة"
+        _force_title_font(slide.shapes.title)
 
-    # Centered info card built as a 2-column table.
+    # Centred info card built as a 2-column table.
     n = len(rows)
     tbl_w = Inches(9.5)
-    row_h = Inches(0.52)
+    row_h = Inches(0.58)
     tbl_h = row_h * n
+    content_top, content_bottom = Inches(1.5), Inches(7.2)
     left = int((prs.slide_width - tbl_w) / 2)
-    top = int((prs.slide_height - tbl_h) / 2) + Inches(0.4)
-    graphic = slide.shapes.add_table(n, 2, left, top, tbl_w, tbl_h)
+    top = int(content_top + max(0, (content_bottom - content_top - tbl_h)) / 2)
+    graphic = slide.shapes.add_table(n, 2, left, top, tbl_w, int(tbl_h))
     table = graphic.table
     table.first_row = False
     table.horz_banding = False
@@ -102,15 +123,27 @@ def _add_summary_slide(prs, school, report) -> None:
     white = RGBColor(0xFF, 0xFF, 0xFF)
 
     for i, (label, value) in enumerate(rows):
-        _style_cell(table.cell(i, 1), label, teal, light, bold=True, size=15, anchor=PP_ALIGN.RIGHT)
-        _style_cell(table.cell(i, 0), value, dark, white, bold=False, size=15, anchor=PP_ALIGN.RIGHT)
-        table.rows[i].height = row_h
+        _style_cell(table.cell(i, 1), label, teal, light, bold=True, size=16, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 0), value, dark, white, bold=(i == 0), size=16, anchor=PP_ALIGN.RIGHT)
+        table.rows[i].height = int(row_h)
 
-    # Move to index 1 (after the cover).
-    sld_lst = prs.slides._sldIdLst
-    ids = list(sld_lst)
-    sld_lst.remove(ids[-1])
-    sld_lst.insert(1, ids[-1])
+    _move_slide(prs, from_index=len(prs.slides) - 1, to_index=1)
+
+
+def _force_title_font(title_shape) -> None:
+    """Ensure the slide title uses Tajawal (some layouts inherit other fonts)."""
+    from pptx.oxml.ns import qn as _qn
+
+    for para in title_shape.text_frame.paragraphs:
+        for run in para.runs:
+            run.font.name = "Tajawal"
+            rPr = run._r.find(_qn("a:rPr"))
+            if rPr is not None:
+                cs = rPr.find(_qn("a:cs"))
+                if cs is None:
+                    cs = rPr.makeelement(_qn("a:cs"), {})
+                    rPr.append(cs)
+                cs.set("typeface", "Tajawal")
 
 
 def _style_cell(cell, text, color, fill, bold, size, anchor) -> None:
@@ -192,19 +225,6 @@ def _fill_cover(prs, school, report) -> None:
         except Exception:
             pass
         break
-
-
-def _set_paragraph_text(p_elem, text: str) -> None:
-    runs = p_elem.findall(qn("a:r"))
-    if not runs:
-        return
-    for r in runs[1:]:
-        p_elem.remove(r)
-    t = runs[0].find(qn("a:t"))
-    if t is None:
-        t = runs[0].makeelement(qn("a:t"), {})
-        runs[0].append(t)
-    t.text = text
 
 
 def _fill_photo_slide(slide, photos) -> None:
@@ -289,66 +309,91 @@ def _add_caption(slide, box_rect, text) -> None:
     run.font.name = "Tajawal"
 
 
-def _fill_notes_slide(slide, notes) -> None:
-    table_shape = next(sh for sh in slide.shapes if sh.has_table)
-    table = table_shape.table
-    tbl = table._tbl
+MAX_TABLE_ROWS_PER_SLIDE = 11  # item/section rows, excluding the header row
 
-    n_needed = len(notes)
-    n_have = len(tbl.tr_lst) - 1  # exclude header row
 
-    if n_needed > n_have:
-        last_tr = tbl.tr_lst[-1]
-        for _ in range(n_needed - n_have):
-            tbl.append(deepcopy(last_tr))
-    elif n_needed < n_have:
-        for tr in tbl.tr_lst[1 + n_needed:]:
-            tbl.remove(tr)
+def _add_combined_notes_slides(prs, notes_by_category, layout) -> None:
+    """One merged notes table: a header, then per-section rows with their items."""
+    rows = []  # ("section", label) | ("item", item, note)
+    for category in NOTE_CATEGORIES:
+        notes = notes_by_category.get(category)
+        if not notes:
+            continue
+        rows.append(("section", NOTE_CATEGORY_LABELS[category]))
+        for note in notes:
+            rows.append(("item", note.item, note.note or ""))
 
-    for i, note in enumerate(notes):
-        row = table.rows[i + 1]
-        _set_cell_text(row.cells[0], note.item)
-        _set_cell_text(row.cells[1], note.note or "")
+    if not rows:
+        return
 
-    # Enlarge and centre the table (horizontally + vertically) in the content
-    # area below the title, keeping the template's look.
+    # Chunk across slides. A section header is never left as a slide's last
+    # row (it moves to the next slide), and a section whose items continue on
+    # a new slide gets its header repeated with "(تابع)".
+    chunks = []
+    current = []
+    active = None  # label of the section whose items are currently flowing
+    for row in rows:
+        if row[0] == "section":
+            active = row[1]
+        if len(current) >= MAX_TABLE_ROWS_PER_SLIDE:
+            moved = current.pop() if current[-1][0] == "section" else None
+            chunks.append(current)
+            current = []
+            if moved is not None:
+                current.append(moved)  # fresh header on the new slide, no تابع
+            elif row[0] == "item" and active:
+                current.append(("section", f"{active} (تابع)"))
+        current.append(row)
+    if current:
+        chunks.append(current)
+
+    for i, chunk in enumerate(chunks):
+        title = "ملاحظات الزيارة" if i == 0 else "ملاحظات الزيارة (تابع)"
+        _build_notes_table_slide(prs, layout, title, chunk)
+
+
+def _build_notes_table_slide(prs, layout, title, chunk) -> None:
     from pptx.util import Inches
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
 
-    slide_w = Inches(13.333)
-    content_top = Inches(1.35)
-    content_bottom = Inches(6.85)
+    slide = prs.slides.add_slide(layout)
+    if slide.shapes.title is not None:
+        slide.shapes.title.text = title
+        _force_title_font(slide.shapes.title)
 
-    new_w = Inches(11.0)
-    col_ratio = table.columns[1].width / (table.columns[0].width + table.columns[1].width)
-    table.columns[1].width = int(new_w * col_ratio)
-    table.columns[0].width = int(new_w - table.columns[1].width)
+    teal = RGBColor(0x0F, 0x76, 0x6E)
+    dark = RGBColor(0x16, 0x21, 0x1F)
+    light = RGBColor(0xEC, 0xF3, 0xF2)
+    white = RGBColor(0xFF, 0xFF, 0xFF)
 
-    total_height = sum(row.height for row in table.rows)
-    table_shape.width = int(new_w)
-    table_shape.height = int(total_height)
-    table_shape.left = int((slide_w - new_w) / 2)
-    avail = content_bottom - content_top
-    table_shape.top = int(content_top + max(0, (avail - total_height)) / 2)
+    n_rows = len(chunk) + 1  # + header
+    tbl_w = Inches(11.0)
+    header_h = Inches(0.5)
+    row_h = Inches(0.42)
+    tbl_h = header_h + row_h * len(chunk)
+    content_top, content_bottom = Inches(1.35), Inches(7.2)
+    left = int((prs.slide_width - tbl_w) / 2)
+    top = int(content_top + max(0, (content_bottom - content_top - tbl_h)) / 2)
 
+    graphic = slide.shapes.add_table(n_rows, 2, left, top, int(tbl_w), int(tbl_h))
+    table = graphic.table
+    table.first_row = False
+    table.horz_banding = False
+    table.columns[1].width = int(tbl_w * 0.40)  # البند (right)
+    table.columns[0].width = int(tbl_w * 0.60)  # الملاحظات (left)
 
-def _set_cell_text(cell, text: str) -> None:
-    tf = cell.text_frame
-    p = tf.paragraphs[0]
-    p_elem = p._p
+    _style_cell(table.cell(0, 1), "الأعمال / البند", white, teal, bold=True, size=15, anchor=PP_ALIGN.CENTER)
+    _style_cell(table.cell(0, 0), "الملاحظات", white, teal, bold=True, size=15, anchor=PP_ALIGN.CENTER)
+    table.rows[0].height = int(header_h)
 
-    if p.runs:
-        run = p.runs[0]
-        run.text = text
-        for extra in list(p.runs[1:]):
-            p_elem.remove(extra._r)
-    else:
-        end_para_rpr = p_elem.find(qn("a:endParaRPr"))
-        run = p.add_run()
-        run.text = text
-        if end_para_rpr is not None:
-            new_rpr = deepcopy(end_para_rpr)
-            new_rpr.tag = qn("a:rPr")
-            existing_rpr = run._r.find(qn("a:rPr"))
-            if existing_rpr is not None:
-                run._r.remove(existing_rpr)
-            run._r.insert(0, new_rpr)
+    for i, row in enumerate(chunk, start=1):
+        table.rows[i].height = int(row_h)
+        if row[0] == "section":
+            merged = table.cell(i, 0)
+            merged.merge(table.cell(i, 1))
+            _style_cell(merged, row[1], white, RGBColor(0x11, 0x8A, 0x80), bold=True, size=14, anchor=PP_ALIGN.CENTER)
+        else:
+            _, item, note = row
+            _style_cell(table.cell(i, 1), item, dark, light, bold=True, size=13, anchor=PP_ALIGN.RIGHT)
+            _style_cell(table.cell(i, 0), note or "—", dark, white, bold=False, size=13, anchor=PP_ALIGN.RIGHT)
