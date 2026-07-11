@@ -15,6 +15,7 @@ export default function Home() {
   const [visitorName, setVisitorName] = useState(
     localStorage.getItem(VISITOR_NAME_KEY) || '',
   )
+  const [contractor, setContractor] = useState('')
   const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
 
@@ -27,6 +28,7 @@ export default function Home() {
         school_id: school.ministry_number,
         visit_date: visitDate,
         visitor_name: visitorName,
+        contractor,
       })
       navigate(`/reports/${report.id}`)
     } finally {
@@ -98,6 +100,16 @@ export default function Home() {
           className="input"
           value={visitorName}
           onChange={(e) => setVisitorName(e.target.value)}
+        />
+      </div>
+
+      <div className="field">
+        <label>المقاول المسؤول (اختياري)</label>
+        <input
+          type="text"
+          className="input"
+          value={contractor}
+          onChange={(e) => setContractor(e.target.value)}
         />
       </div>
 

@@ -52,6 +52,7 @@ def create_report(payload: ReportCreate, db: Session = Depends(get_db)):
         school_id=payload.school_id,
         visit_date=payload.visit_date,
         visitor_name=payload.visitor_name,
+        contractor=payload.contractor,
     )
     db.add(report)
     db.commit()

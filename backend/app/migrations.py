@@ -13,6 +13,7 @@ NEW_COLUMNS = [
     ("reports", "updated_at", "TIMESTAMP"),
     ("reports", "status", "VARCHAR DEFAULT 'draft'"),
     ("reports", "completed_at", "TIMESTAMP"),
+    ("reports", "contractor", "VARCHAR DEFAULT ''"),
     ("report_photos", "caption", "VARCHAR DEFAULT ''"),
 ]
 

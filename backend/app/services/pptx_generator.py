@@ -39,112 +39,159 @@ def generate_report_pptx(school, report, output_path) -> None:
     for category, slide_idx in NOTE_SLIDE_INDEX.items():
         _fill_notes_slide(prs.slides[slide_idx], notes_by_category.get(category, []))
 
-    # Add the summary slide last, then move it to position 1 (after the cover),
-    # so the index-based fills above stay valid.
-    _add_summary_slide(prs, photos_by_category, notes_by_category)
+    # Add the school-summary slide last, then move it to position 1 (after the
+    # cover), so the index-based fills above stay valid.
+    _add_summary_slide(prs, school, report)
 
     prs.save(output_path)
 
 
-def _add_summary_slide(prs, photos_by_category, notes_by_category) -> None:
-    from pptx.util import Pt, Inches
+def _extract_locality(address) -> str:
+    if not address:
+        return ""
+    text = str(address)
+    if "حي" in text:
+        tail = text.split("حي", 1)[1].strip(" -‏‬")
+        return "حي " + tail.split(" - ")[0].strip()
+    return ""
+
+
+def _add_summary_slide(prs, school, report) -> None:
+    from pptx.util import Pt, Inches, Emu
     from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
-    total_photos = sum(len(v) for v in photos_by_category.values())
-    total_notes = sum(len(v) for v in notes_by_category.values())
-    photo_sections = sum(1 for c in PHOTO_CATEGORIES if photos_by_category.get(c))
-    note_sections = sum(1 for c in NOTE_CATEGORIES if notes_by_category.get(c))
-    completion = round(
-        (photo_sections + note_sections) / (len(PHOTO_CATEGORIES) + len(NOTE_CATEGORIES)) * 100
-    )
+    visit_date_str = report.visit_date.strftime("%Y-%m-%d") if report.visit_date else ""
+    region = school.region or ""
+    locality = _extract_locality(school.address)
+    region_field = " - ".join([x for x in [region, locality] if x]) or region
 
-    # Reuse the "Title Only" layout used by the closing slide for a clean look.
-    layout = prs.slides[-1].slide_layout
+    rows = [
+        ("الرقم الوزاري", school.ministry_number or ""),
+        ("اسم المدرسة", school.name or ""),
+        ("المنطقة / الحي", region_field),
+        ("الزون", school.zone or ""),
+        ("مهندس الزون", school.engineer or ""),
+        ("المشرف", school.supervisor or ""),
+        ("المقاول المسؤول", getattr(report, "contractor", "") or "—"),
+        ("تاريخ الزيارة", visit_date_str),
+    ]
+
+    layout = prs.slides[-1].slide_layout  # "Title Only" (theme background)
     slide = prs.slides.add_slide(layout)
-
     if slide.shapes.title is not None:
         slide.shapes.title.text = "ملخص الزيارة"
 
-    lines = [
-        f"نسبة اكتمال التقرير: {completion}%",
-        f"إجمالي الصور: {total_photos}    |    إجمالي الملاحظات: {total_notes}",
-        "",
-        "الصور حسب القسم:",
-    ]
-    for c in PHOTO_CATEGORIES:
-        lines.append(f"• {PHOTO_CATEGORY_LABELS[c]}: {len(photos_by_category.get(c, []))}")
-    lines.append("")
-    lines.append("الملاحظات حسب القسم:")
-    for c in NOTE_CATEGORIES:
-        lines.append(f"• {NOTE_CATEGORY_LABELS[c]}: {len(notes_by_category.get(c, []))}")
+    # Centered info card built as a 2-column table.
+    n = len(rows)
+    tbl_w = Inches(9.5)
+    row_h = Inches(0.52)
+    tbl_h = row_h * n
+    left = int((prs.slide_width - tbl_w) / 2)
+    top = int((prs.slide_height - tbl_h) / 2) + Inches(0.4)
+    graphic = slide.shapes.add_table(n, 2, left, top, tbl_w, tbl_h)
+    table = graphic.table
+    table.first_row = False
+    table.horz_banding = False
+    table.columns[0].width = int(tbl_w * 0.62)  # value (left)
+    table.columns[1].width = int(tbl_w * 0.38)  # label (right)
 
-    box = slide.shapes.add_textbox(Inches(0.8), Inches(1.8), Inches(11.5), Inches(5))
-    tf = box.text_frame
-    tf.word_wrap = True
-    for i, line in enumerate(lines):
-        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.alignment = PP_ALIGN.RIGHT
-        run = p.add_run()
-        run.text = line
-        run.font.size = Pt(18)
-        run.font.name = "Tajawal"
-        run.font.color.rgb = RGBColor(0x16, 0x21, 0x1F)
-        if line.endswith(":") or "نسبة اكتمال" in line:
-            run.font.bold = True
+    teal = RGBColor(0x0F, 0x76, 0x6E)
+    dark = RGBColor(0x16, 0x21, 0x1F)
+    light = RGBColor(0xEC, 0xF3, 0xF2)
+    white = RGBColor(0xFF, 0xFF, 0xFF)
 
-    # Move the newly-appended slide to index 1 (right after the cover).
+    for i, (label, value) in enumerate(rows):
+        _style_cell(table.cell(i, 1), label, teal, light, bold=True, size=15, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 0), value, dark, white, bold=False, size=15, anchor=PP_ALIGN.RIGHT)
+        table.rows[i].height = row_h
+
+    # Move to index 1 (after the cover).
     sld_lst = prs.slides._sldIdLst
     ids = list(sld_lst)
     sld_lst.remove(ids[-1])
     sld_lst.insert(1, ids[-1])
 
 
+def _style_cell(cell, text, color, fill, bold, size, anchor) -> None:
+    from pptx.util import Pt
+    from pptx.enum.text import MSO_ANCHOR
+
+    cell.fill.solid()
+    cell.fill.fore_color.rgb = fill
+    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+    cell.margin_top = Pt(2)
+    cell.margin_bottom = Pt(2)
+    cell.margin_left = Pt(6)
+    cell.margin_right = Pt(6)
+    tf = cell.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.alignment = anchor
+    run = p.add_run()
+    run.text = str(text)
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.name = "Tajawal"
+    run.font.color.rgb = color
+
+
 def _fill_cover(prs, school, report) -> None:
+    """Cover: school name (bold, large) → visitor (regular) → visit date."""
+    from pptx.util import Pt
+
     slide = prs.slides[COVER_SLIDE_INDEX]
     visit_date_str = report.visit_date.strftime("%Y-%m-%d") if report.visit_date else ""
-    values = {
-        "اسم الزائر": report.visitor_name or "",
-        "اسم المدرسة": school.name or "",
-        "تاريخ الزيارة": visit_date_str,
+
+    # The template's info box has three paragraphs starting with these labels.
+    order = ["اسم المدرسة", "اسم الزائر", "تاريخ الزيارة"]
+    new_lines = {
+        "اسم المدرسة": (school.name or "", True, 28),
+        "اسم الزائر": (f"الزائر: {report.visitor_name or ''}", False, 16),
+        "تاريخ الزيارة": (f"تاريخ الزيارة: {visit_date_str}", False, 16),
     }
-    target_tf = None
+
     for shape in slide.shapes:
         if not shape.has_text_frame:
             continue
-        for para in shape.text_frame.paragraphs:
+        paras = shape.text_frame.paragraphs
+        # Identify the info box: first paragraph starts with one of our labels.
+        if not paras or not paras[0].runs:
+            continue
+        first_text = paras[0].runs[0].text
+        if not any(first_text.startswith(lbl) for lbl in order):
+            continue
+
+        # Relabel each paragraph with its new content/formatting.
+        by_label = {}
+        for para in paras:
             if not para.runs:
                 continue
-            first_run = para.runs[0]
-            for label, value in values.items():
-                if first_run.text.startswith(label):
-                    first_run.text = first_run.text.rstrip() + " " + value
-                    target_tf = shape.text_frame
-                    break
+            label = next((lbl for lbl in order if para.runs[0].text.startswith(lbl)), None)
+            if label is None:
+                continue
+            text, bold, size = new_lines[label]
+            run = para.runs[0]
+            run.text = text
+            for extra in para.runs[1:]:
+                extra._r.getparent().remove(extra._r)
+            run.font.bold = bold
+            run.font.size = Pt(size)
+            by_label[label] = para._p
 
-    if target_tf is not None:
-        # Auto-fit so the added school-info lines never overflow the box.
+        # Reorder paragraphs to: school → visitor → date.
+        txbody = shape.text_frame._txBody
+        for label in order:
+            p_elem = by_label.get(label)
+            if p_elem is not None:
+                txbody.remove(p_elem)
+                txbody.append(p_elem)
         try:
-            target_tf.word_wrap = True
-            target_tf.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
+            shape.text_frame.word_wrap = True
+            shape.text_frame.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
         except Exception:
             pass
-        extra = [
-            ("الرقم الوزاري", school.ministry_number),
-            ("المنطقة", school.region),
-            ("الزون", school.zone),
-            ("المهندس المرافق", school.engineer),
-            ("المشرف", school.supervisor),
-            ("العنوان", school.address),
-        ]
-        last_p = target_tf.paragraphs[-1]._p
-        for label, value in extra:
-            if not value:
-                continue
-            new_p = deepcopy(last_p)
-            _set_paragraph_text(new_p, f"{label}: {value}")
-            last_p.addnext(new_p)
-            last_p = new_p
+        break
 
 
 def _set_paragraph_text(p_elem, text: str) -> None:
@@ -161,53 +208,84 @@ def _set_paragraph_text(p_elem, text: str) -> None:
 
 
 def _fill_photo_slide(slide, photos) -> None:
+    from PIL import Image
+    from pptx.util import Inches
+    from .photo_layout import compute_layout
+
     placeholders = [
         sh
         for sh in slide.placeholders
         if sh.placeholder_format.type == PP_PLACEHOLDER.PICTURE
     ]
-    placeholders.sort(key=lambda ph: ph.placeholder_format.idx)
+    # Content area = bounding box of the template's picture placeholders,
+    # so we respect the template's margins/theme.
+    if placeholders:
+        left = min(ph.left for ph in placeholders)
+        top = min(ph.top for ph in placeholders)
+        right = max(ph.left + ph.width for ph in placeholders)
+        bottom = max(ph.top + ph.height for ph in placeholders)
+        area = (left, top, right - left, bottom - top)
+    else:
+        area = (Inches(1.6), Inches(1.37), Inches(10.17), Inches(5.59))
 
-    captioned = []
-    for ph, photo in zip(placeholders, photos):
-        image_bytes = load_photo_bytes(photo.file_path)
-        left, top, width, height = ph.left, ph.top, ph.width, ph.height
-        ph.insert_picture(io.BytesIO(image_bytes))
-        caption = getattr(photo, "caption", "") or ""
-        if caption.strip():
-            captioned.append((left, top, width, height, caption.strip()))
-
-    for ph in placeholders[len(photos):]:
+    # Remove the fixed placeholders; we place pictures dynamically instead.
+    for ph in placeholders:
         ph._element.getparent().remove(ph._element)
 
-    # Caption bars are added after pictures so they render on top.
-    for left, top, width, height, caption in captioned:
-        _add_caption_bar(slide, left, top, width, height, caption)
+    if not photos:
+        return
+
+    images = []
+    for photo in photos:
+        data = load_photo_bytes(photo.file_path)
+        with Image.open(io.BytesIO(data)) as im:
+            w, h = im.size
+        caption = (getattr(photo, "caption", "") or "").strip()
+        images.append({"data": data, "aspect": (w / h) if h else 1.0, "caption": caption})
+
+    n = len(images)
+    gap = Inches(0.12)
+    caption_h = Inches(0.32)
+    rects = compute_layout(
+        n, area,
+        [im["aspect"] for im in images],
+        [bool(im["caption"]) for im in images],
+        gap, caption_h,
+    )
+
+    for im, rect in zip(images, rects):
+        ix, iy, iw, ih = rect["img"]
+        slide.shapes.add_picture(io.BytesIO(im["data"]), ix, iy, iw, ih)
+        if rect["caption"] and im["caption"]:
+            _add_caption(slide, rect["caption"], im["caption"])
 
 
-def _add_caption_bar(slide, left, top, width, height, text) -> None:
+def _add_caption(slide, box_rect, text) -> None:
+    """White caption box with theme-coloured Tajawal text, below the image."""
     from pptx.util import Pt
     from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
-    bar_h = Pt(20)
-    box = slide.shapes.add_textbox(left, top + height - bar_h, width, bar_h)
+    l, t, w, h = box_rect
+    box = slide.shapes.add_textbox(l, t, w, h)
     box.fill.solid()
-    box.fill.fore_color.rgb = RGBColor(0x0F, 0x76, 0x6E)
-    box.line.fill.background()
+    box.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    box.line.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
+    box.line.width = Pt(0.75)
     tf = box.text_frame
     tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     tf.margin_top = Pt(1)
     tf.margin_bottom = Pt(1)
-    tf.margin_left = Pt(4)
-    tf.margin_right = Pt(4)
+    tf.margin_left = Pt(3)
+    tf.margin_right = Pt(3)
     p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
     run.text = text
-    run.font.size = Pt(10)
+    run.font.size = Pt(11)
     run.font.bold = True
-    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    run.font.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
     run.font.name = "Tajawal"
 
 
@@ -232,8 +310,25 @@ def _fill_notes_slide(slide, notes) -> None:
         _set_cell_text(row.cells[0], note.item)
         _set_cell_text(row.cells[1], note.note or "")
 
+    # Enlarge and centre the table (horizontally + vertically) in the content
+    # area below the title, keeping the template's look.
+    from pptx.util import Inches
+
+    slide_w = Inches(13.333)
+    content_top = Inches(1.35)
+    content_bottom = Inches(6.85)
+
+    new_w = Inches(11.0)
+    col_ratio = table.columns[1].width / (table.columns[0].width + table.columns[1].width)
+    table.columns[1].width = int(new_w * col_ratio)
+    table.columns[0].width = int(new_w - table.columns[1].width)
+
     total_height = sum(row.height for row in table.rows)
-    table_shape.height = total_height
+    table_shape.width = int(new_w)
+    table_shape.height = int(total_height)
+    table_shape.left = int((slide_w - new_w) / 2)
+    avail = content_bottom - content_top
+    table_shape.top = int(content_top + max(0, (avail - total_height)) / 2)
 
 
 def _set_cell_text(cell, text: str) -> None:

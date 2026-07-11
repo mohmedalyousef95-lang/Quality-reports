@@ -61,8 +61,12 @@ export const api = {
   deleteChecklistItem: (id: number) =>
     request<{ ok: boolean }>(`/api/checklist/${id}`, { method: 'DELETE' }),
 
-  createReport: (payload: { school_id: string; visit_date: string; visitor_name: string }) =>
-    request<Report>('/api/reports', { method: 'POST', body: JSON.stringify(payload) }),
+  createReport: (payload: {
+    school_id: string
+    visit_date: string
+    visitor_name: string
+    contractor?: string
+  }) => request<Report>('/api/reports', { method: 'POST', body: JSON.stringify(payload) }),
   getReport: (id: number) => request<Report>(`/api/reports/${id}`),
   deleteReport: (id: number) => request<{ ok: boolean }>(`/api/reports/${id}`, { method: 'DELETE' }),
 

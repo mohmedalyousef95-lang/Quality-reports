@@ -43,6 +43,7 @@ class Report(Base):
     school_id = Column(String, ForeignKey("schools.ministry_number"), nullable=False)
     visit_date = Column(Date, default=date.today, nullable=False)
     visitor_name = Column(String)
+    contractor = Column(String, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="draft", index=True)  # draft | completed

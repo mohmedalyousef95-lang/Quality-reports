@@ -43,6 +43,7 @@ class ReportCreate(BaseModel):
     school_id: str
     visit_date: date
     visitor_name: str
+    contractor: str = ""
 
 
 class ReportNoteIn(BaseModel):
