@@ -55,7 +55,23 @@ def generate_report_pptx(school, report, output_path) -> None:
     _move_slide(prs, from_index=5, to_index=len(prs.slides) - 1)
     _add_school_info_slide(prs, school, report)
 
+    _add_fade_transitions(prs)
+
     prs.save(output_path)
+
+
+def _add_fade_transitions(prs) -> None:
+    """Subtle fade between all slides (p:transition/p:fade)."""
+    for slide in prs.slides:
+        sld = slide._element
+        if sld.find(qn("p:transition")) is not None:
+            continue
+        trans = sld.makeelement(qn("p:transition"), {})
+        trans.append(sld.makeelement(qn("p:fade"), {}))
+        anchor = sld.find(qn("p:clrMapOvr"))
+        if anchor is None:
+            anchor = sld.find(qn("p:cSld"))
+        anchor.addnext(trans)
 
 
 def _delete_slide(prs, index) -> None:
@@ -111,8 +127,8 @@ def _add_school_info_slide(prs, school, report) -> None:
 
     # Centred info card built as a 2-column table.
     n = len(rows)
-    tbl_w = Inches(9.5)
-    row_h = Inches(0.58)
+    tbl_w = Inches(10.5)
+    row_h = Inches(0.64)
     tbl_h = row_h * n
     content_top, content_bottom = Inches(1.5), Inches(7.2)
     left = int((prs.slide_width - tbl_w) / 2)
@@ -130,20 +146,24 @@ def _add_school_info_slide(prs, school, report) -> None:
     white = RGBColor(0xFF, 0xFF, 0xFF)
 
     for i, (label, value) in enumerate(rows):
-        _style_cell(table.cell(i, 1), label, teal, light, bold=False, size=16, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 1), label, teal, light, bold=True, size=16, anchor=PP_ALIGN.RIGHT)
         _style_cell(table.cell(i, 0), value, dark, white, bold=False, size=16, anchor=PP_ALIGN.RIGHT)
         table.rows[i].height = int(row_h)
 
     _move_slide(prs, from_index=len(prs.slides) - 1, to_index=1)
 
 
-def _force_title_font(title_shape) -> None:
-    """Ensure the slide title uses Tajawal (some layouts inherit other fonts)."""
+def _force_title_font(title_shape, size=26) -> None:
+    """Ensure the slide title uses Tajawal at a uniform size (template
+    inherits 24pt; the reviewed spec asks for slightly larger titles)."""
+    from pptx.util import Pt
     from pptx.oxml.ns import qn as _qn
 
     for para in title_shape.text_frame.paragraphs:
         for run in para.runs:
             run.font.name = "Tajawal"
+            if size:
+                run.font.size = Pt(size)
             rPr = run._r.find(_qn("a:rPr"))
             if rPr is not None:
                 cs = rPr.find(_qn("a:cs"))
@@ -186,9 +206,9 @@ def _fill_cover(prs, school, report) -> None:
     # The template's info box has three paragraphs starting with these labels.
     order = ["اسم المدرسة", "اسم الزائر", "تاريخ الزيارة"]
     new_lines = {
-        "اسم المدرسة": (school.name or "", True, 28),
-        "اسم الزائر": (f"الزائر: {report.visitor_name or ''}", False, 16),
-        "تاريخ الزيارة": (f"تاريخ الزيارة: {visit_date_str}", False, 16),
+        "اسم المدرسة": (school.name or "", True, 32),
+        "اسم الزائر": (f"الزائر: {report.visitor_name or ''}", False, 14),
+        "تاريخ الزيارة": (f"تاريخ الزيارة: {visit_date_str}", False, 14),
     }
 
     for shape in slide.shapes:
@@ -227,8 +247,12 @@ def _fill_cover(prs, school, report) -> None:
                 txbody.remove(p_elem)
                 txbody.append(p_elem)
         try:
+            from pptx.enum.text import MSO_ANCHOR
+
             shape.text_frame.word_wrap = True
             shape.text_frame.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
+            # Middle-anchor the block so top/bottom whitespace is balanced.
+            shape.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
         except Exception:
             pass
         break
@@ -239,25 +263,21 @@ def _fill_photo_slide(slide, photos) -> None:
     from pptx.util import Inches
     from .photo_layout import compute_layout
 
+    if slide.shapes.title is not None:
+        _force_title_font(slide.shapes.title)
+
     placeholders = [
         sh
         for sh in slide.placeholders
         if sh.placeholder_format.type == PP_PLACEHOLDER.PICTURE
     ]
-    # Content area = bounding box of the template's picture placeholders,
-    # so we respect the template's margins/theme.
-    if placeholders:
-        left = min(ph.left for ph in placeholders)
-        top = min(ph.top for ph in placeholders)
-        right = max(ph.left + ph.width for ph in placeholders)
-        bottom = max(ph.top + ph.height for ph in placeholders)
-        area = (left, top, right - left, bottom - top)
-    else:
-        area = (Inches(1.6), Inches(1.37), Inches(10.17), Inches(5.59))
-
     # Remove the fixed placeholders; we place pictures dynamically instead.
     for ph in placeholders:
         ph._element.getparent().remove(ph._element)
+
+    # Content area aligned with the title margins (L=0.92, W=11.5) so every
+    # slide shares the same gutters and photos use the full slide width.
+    area = (Inches(0.92), Inches(1.3), Inches(11.5), Inches(5.95))
 
     if not photos:
         return
@@ -272,7 +292,7 @@ def _fill_photo_slide(slide, photos) -> None:
 
     n = len(images)
     gap = Inches(0.12)
-    caption_h = Inches(0.32)
+    caption_h = Inches(0.38)  # fits a two-line caption box (0.03 + 0.34)
     rects = compute_layout(
         n, area,
         [im["aspect"] for im in images],
@@ -289,53 +309,83 @@ def _fill_photo_slide(slide, photos) -> None:
             pic.crop_right = cr
             pic.crop_top = ct
             pic.crop_bottom = cb
+        _style_picture(pic)
         if rect["caption"] and im["caption"]:
             strip_y = rect["caption"][1]
             _add_caption(slide, rect["img"], strip_y, im["caption"])
 
 
+def _style_picture(pic) -> None:
+    """Light border + soft drop shadow on photos (executive polish)."""
+    from pptx.util import Pt
+    from pptx.dml.color import RGBColor
+
+    pic.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+    pic.line.width = Pt(0.75)
+
+    spPr = pic._element.spPr
+    if spPr.find(qn("a:effectLst")) is not None:
+        return
+    effect_lst = spPr.makeelement(qn("a:effectLst"), {})
+    shadow = spPr.makeelement(
+        qn("a:outerShdw"),
+        {"blurRad": "50800", "dist": "25400", "dir": "5400000", "rotWithShape": "0"},
+    )
+    color = spPr.makeelement(qn("a:srgbClr"), {"val": "000000"})
+    alpha = spPr.makeelement(qn("a:alpha"), {"val": "35000"})
+    color.append(alpha)
+    shadow.append(color)
+    effect_lst.append(shadow)
+    spPr.append(effect_lst)
+
+
 def _add_caption(slide, img_rect, strip_y, text) -> None:
-    """Caption styled exactly like the approved reference deck: a compact
-    white box with a thin theme border that hugs the text (single line,
-    auto-fit), Tajawal 7pt #0099A1, centred under the photo."""
-    from pptx.util import Pt, Emu, Inches
+    """White caption bar as wide as its photo, directly beneath it.
+
+    The frame adapts to the text so nothing ever spills out: one line at
+    7pt when it fits, otherwise it wraps to a second line (taller box),
+    and shrinks to 6pt as a last resort. Text is centred both ways,
+    Tajawal, theme colour #0099A1 with the thin 0F766E border."""
+    from pptx.util import Pt, Inches
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
     ix, iy, iw, ih = img_rect
-    # Estimate the auto-fit box size (~2.6pt per Arabic glyph at 7pt + insets);
-    # PowerPoint re-fits it on edit thanks to spAutoFit.
-    est_w = min(iw, Emu(int((len(text) * 2.6 + 8) * 12700)))
-    est_h = Inches(0.16)
-    left = int(ix + (iw - est_w) / 2)
-    top = int(strip_y + Inches(0.03))
+    inner_pt = iw / 12700 - 8  # usable width in points (minus insets)
+    est_pt_per_char = 2.6  # average Arabic glyph width at 7pt
 
-    box = slide.shapes.add_textbox(left, top, int(est_w), int(est_h))
+    font_size = 7
+    lines = 1
+    if len(text) * est_pt_per_char > inner_pt:
+        lines = 2
+        if len(text) * est_pt_per_char > inner_pt * 2:
+            font_size = 6
+    box_h = Inches(0.18) if lines == 1 else Inches(0.34)
+
+    box = slide.shapes.add_textbox(int(ix), int(strip_y + Inches(0.03)), int(iw), int(box_h))
     box.fill.solid()
     box.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
     box.line.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
     box.line.width = Pt(0.75)
 
     tf = box.text_frame
-    tf.word_wrap = False
+    tf.word_wrap = True
+    # normAutofit: PowerPoint itself shrinks the text further if an extreme
+    # caption would still overflow the frame — nothing ever spills out.
+    from pptx.enum.text import MSO_AUTO_SIZE as _AS
+
+    tf.auto_size = _AS.TEXT_TO_FIT_SHAPE
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     tf.margin_top = Pt(1)
     tf.margin_bottom = Pt(1)
     tf.margin_left = Pt(3)
     tf.margin_right = Pt(3)
-    # spAutoFit: the box hugs its text like in the reference deck.
-    bodyPr = tf._txBody.find(qn("a:bodyPr"))
-    for tag in ("a:normAutofit", "a:noAutofit", "a:spAutoFit"):
-        el = bodyPr.find(qn(tag))
-        if el is not None:
-            bodyPr.remove(el)
-    bodyPr.append(bodyPr.makeelement(qn("a:spAutoFit"), {}))
 
     p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
     run.text = text
-    run.font.size = Pt(7)
+    run.font.size = Pt(font_size)
     run.font.bold = False
     run.font.color.rgb = RGBColor(0x00, 0x99, 0xA1)
     run.font.name = "Tajawal"
@@ -354,7 +404,9 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
         if not notes:
             continue
         rows.append(("section", NOTE_CATEGORY_LABELS[category]))
-        for note in notes:
+        # Priority order: items carrying an actual observation first,
+        # empty/OK items after (stable within each group).
+        for note in sorted(notes, key=lambda n: 0 if (n.note or "").strip() else 1):
             rows.append(("item", note.item, note.note or ""))
 
     if not rows:
@@ -438,7 +490,8 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
             _set_cell_text(cells[1], note or "—")
 
     # Enlarge and centre (template look preserved; only geometry changes).
-    new_w = Inches(11.0)
+    # 11.5" wide = the same gutters as the slide titles (L=0.92).
+    new_w = Inches(11.5)
     old_w = sum(col.width for col in table.columns)
     for col in table.columns:
         col.width = int(col.width * new_w / old_w)
