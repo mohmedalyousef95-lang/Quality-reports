@@ -1,9 +1,11 @@
 import io
 from collections import defaultdict
+from copy import deepcopy
 
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.oxml.ns import qn
 
 from ..config import TEMPLATE_PATH
 from ..constants import (
@@ -35,9 +37,14 @@ def generate_report_pptx(school, report, output_path) -> None:
         notes_by_category[note.category].append(note)
 
     # One combined notes table (section header rows + item rows) replaces the
-    # template's six per-category note slides.
-    notes_layout = prs.slides[min(NOTE_SLIDE_INDEX.values())].slide_layout
-    _add_combined_notes_slides(prs, notes_by_category, notes_layout)
+    # template's six per-category note slides. The original template table is
+    # cloned so the merged table keeps the exact template styling (borders,
+    # header fill, Tajawal, RTL alignment).
+    src_slide = prs.slides[min(NOTE_SLIDE_INDEX.values())]
+    notes_layout = src_slide.slide_layout
+    src_table_el = next(sh for sh in src_slide.shapes if sh.has_table)._element
+    table_template = deepcopy(src_table_el)
+    _add_combined_notes_slides(prs, notes_by_category, notes_layout, table_template)
 
     for idx in sorted(NOTE_SLIDE_INDEX.values(), reverse=True):
         _delete_slide(prs, idx)
@@ -273,15 +280,37 @@ def _fill_photo_slide(slide, photos) -> None:
         gap, caption_h,
     )
 
+    # One caption font size for the whole slide (uniform look, single line):
+    # sized so the longest caption fits the narrowest caption box.
+    font_size = 11
+    cap_pairs = [
+        (rect["caption"][2], im["caption"])
+        for im, rect in zip(images, rects)
+        if rect["caption"] and im["caption"]
+    ]
+    if cap_pairs:
+        tightest = min(w / max(len(t), 1) for w, t in cap_pairs)
+        width_pt_per_char = tightest / 12700  # EMU → points
+        font_size = max(7, min(11, int(width_pt_per_char / 0.52)))
+
     for im, rect in zip(images, rects):
         ix, iy, iw, ih = rect["img"]
-        slide.shapes.add_picture(io.BytesIO(im["data"]), ix, iy, iw, ih)
+        pic = slide.shapes.add_picture(io.BytesIO(im["data"]), ix, iy, iw, ih)
+        if rect["crop"]:
+            cl, cr, ct, cb = rect["crop"]
+            pic.crop_left = cl
+            pic.crop_right = cr
+            pic.crop_top = ct
+            pic.crop_bottom = cb
         if rect["caption"] and im["caption"]:
-            _add_caption(slide, rect["caption"], im["caption"])
+            _add_caption(slide, rect["caption"], im["caption"], font_size)
 
 
-def _add_caption(slide, box_rect, text) -> None:
-    """White caption box with theme-coloured Tajawal text, below the image."""
+def _add_caption(slide, box_rect, text, font_size=11) -> None:
+    """White caption box with theme-coloured Tajawal text, below the image.
+
+    Single line (no wrap) at a slide-uniform font size for a consistent look.
+    """
     from pptx.util import Pt
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
@@ -293,7 +322,7 @@ def _add_caption(slide, box_rect, text) -> None:
     box.line.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
     box.line.width = Pt(0.75)
     tf = box.text_frame
-    tf.word_wrap = True
+    tf.word_wrap = False
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     tf.margin_top = Pt(1)
     tf.margin_bottom = Pt(1)
@@ -303,16 +332,16 @@ def _add_caption(slide, box_rect, text) -> None:
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
     run.text = text
-    run.font.size = Pt(11)
+    run.font.size = Pt(font_size)
     run.font.bold = True
     run.font.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
     run.font.name = "Tajawal"
 
 
-MAX_TABLE_ROWS_PER_SLIDE = 11  # item/section rows, excluding the header row
+MAX_TABLE_ROWS_PER_SLIDE = 9  # item/section rows, excluding the header row
 
 
-def _add_combined_notes_slides(prs, notes_by_category, layout) -> None:
+def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -> None:
     """One merged notes table: a header, then per-section rows with their items."""
     rows = []  # ("section", label) | ("item", item, note)
     for category in NOTE_CATEGORIES:
@@ -349,51 +378,77 @@ def _add_combined_notes_slides(prs, notes_by_category, layout) -> None:
 
     for i, chunk in enumerate(chunks):
         title = "ملاحظات الزيارة" if i == 0 else "ملاحظات الزيارة (تابع)"
-        _build_notes_table_slide(prs, layout, title, chunk)
+        _build_notes_table_slide(prs, layout, title, chunk, table_template)
 
 
-def _build_notes_table_slide(prs, layout, title, chunk) -> None:
+def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
+    """Clone the template's own table (its borders, header fill, Tajawal, RTL)
+    and rebuild its rows: header + section rows (merged, header-styled) +
+    item rows, then enlarge and centre it in the content area."""
     from pptx.util import Inches
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
 
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title is not None:
         slide.shapes.title.text = title
         _force_title_font(slide.shapes.title)
 
-    teal = RGBColor(0x0F, 0x76, 0x6E)
-    dark = RGBColor(0x16, 0x21, 0x1F)
-    light = RGBColor(0xEC, 0xF3, 0xF2)
-    white = RGBColor(0xFF, 0xFF, 0xFF)
+    gf_el = deepcopy(table_template)
+    slide.shapes._spTree.append(gf_el)
+    table_shape = next(sh for sh in slide.shapes if sh.has_table)
+    table = table_shape.table
+    tbl = table._tbl
 
-    n_rows = len(chunk) + 1  # + header
-    tbl_w = Inches(11.0)
-    header_h = Inches(0.5)
-    row_h = Inches(0.42)
-    tbl_h = header_h + row_h * len(chunk)
-    content_top, content_bottom = Inches(1.35), Inches(7.2)
-    left = int((prs.slide_width - tbl_w) / 2)
-    top = int(content_top + max(0, (content_bottom - content_top - tbl_h)) / 2)
+    header_tr = tbl.tr_lst[0]
+    item_tr_template = deepcopy(tbl.tr_lst[1])  # a formatted content row
+    for tr in list(tbl.tr_lst[1:]):
+        tbl.remove(tr)
 
-    graphic = slide.shapes.add_table(n_rows, 2, left, top, int(tbl_w), int(tbl_h))
-    table = graphic.table
-    table.first_row = False
-    table.horz_banding = False
-    table.columns[1].width = int(tbl_w * 0.40)  # البند (right)
-    table.columns[0].width = int(tbl_w * 0.60)  # الملاحظات (left)
-
-    _style_cell(table.cell(0, 1), "الأعمال / البند", white, teal, bold=True, size=15, anchor=PP_ALIGN.CENTER)
-    _style_cell(table.cell(0, 0), "الملاحظات", white, teal, bold=True, size=15, anchor=PP_ALIGN.CENTER)
-    table.rows[0].height = int(header_h)
+    for row in chunk:
+        tbl.append(deepcopy(header_tr) if row[0] == "section" else deepcopy(item_tr_template))
 
     for i, row in enumerate(chunk, start=1):
-        table.rows[i].height = int(row_h)
+        cells = table.rows[i].cells
         if row[0] == "section":
-            merged = table.cell(i, 0)
-            merged.merge(table.cell(i, 1))
-            _style_cell(merged, row[1], white, RGBColor(0x11, 0x8A, 0x80), bold=True, size=14, anchor=PP_ALIGN.CENTER)
+            _set_cell_text(cells[0], row[1])
+            _set_cell_text(cells[1], "")
+            cells[0].merge(cells[1])
         else:
             _, item, note = row
-            _style_cell(table.cell(i, 1), item, dark, light, bold=True, size=13, anchor=PP_ALIGN.RIGHT)
-            _style_cell(table.cell(i, 0), note or "—", dark, white, bold=False, size=13, anchor=PP_ALIGN.RIGHT)
+            _set_cell_text(cells[0], item)
+            _set_cell_text(cells[1], note or "—")
+
+    # Enlarge and centre (template look preserved; only geometry changes).
+    new_w = Inches(11.0)
+    old_w = sum(col.width for col in table.columns)
+    for col in table.columns:
+        col.width = int(col.width * new_w / old_w)
+    total_h = sum(r.height for r in table.rows)
+    table_shape.width = int(new_w)
+    table_shape.height = int(total_h)
+    table_shape.left = int((prs.slide_width - new_w) / 2)
+    content_top, content_bottom = Inches(1.35), Inches(7.2)
+    table_shape.top = int(content_top + max(0, (content_bottom - content_top - total_h)) / 2)
+
+
+def _set_cell_text(cell, text: str) -> None:
+    """Set cell text while preserving the template run formatting (Tajawal, RTL)."""
+    tf = cell.text_frame
+    p = tf.paragraphs[0]
+    p_elem = p._p
+
+    if p.runs:
+        run = p.runs[0]
+        run.text = text
+        for extra in list(p.runs[1:]):
+            p_elem.remove(extra._r)
+    else:
+        end_para_rpr = p_elem.find(qn("a:endParaRPr"))
+        run = p.add_run()
+        run.text = text
+        if end_para_rpr is not None:
+            new_rpr = deepcopy(end_para_rpr)
+            new_rpr.tag = qn("a:rPr")
+            existing_rpr = run._r.find(qn("a:rPr"))
+            if existing_rpr is not None:
+                run._r.remove(existing_rpr)
+            run._r.insert(0, new_rpr)
