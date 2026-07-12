@@ -130,8 +130,8 @@ def _add_school_info_slide(prs, school, report) -> None:
     white = RGBColor(0xFF, 0xFF, 0xFF)
 
     for i, (label, value) in enumerate(rows):
-        _style_cell(table.cell(i, 1), label, teal, light, bold=True, size=16, anchor=PP_ALIGN.RIGHT)
-        _style_cell(table.cell(i, 0), value, dark, white, bold=(i == 0), size=16, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 1), label, teal, light, bold=False, size=16, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 0), value, dark, white, bold=False, size=16, anchor=PP_ALIGN.RIGHT)
         table.rows[i].height = int(row_h)
 
     _move_slide(prs, from_index=len(prs.slides) - 1, to_index=1)
@@ -280,19 +280,6 @@ def _fill_photo_slide(slide, photos) -> None:
         gap, caption_h,
     )
 
-    # One caption font size for the whole slide (uniform look, single line):
-    # sized so the longest caption fits the narrowest caption box.
-    font_size = 11
-    cap_pairs = [
-        (rect["caption"][2], im["caption"])
-        for im, rect in zip(images, rects)
-        if rect["caption"] and im["caption"]
-    ]
-    if cap_pairs:
-        tightest = min(w / max(len(t), 1) for w, t in cap_pairs)
-        width_pt_per_char = tightest / 12700  # EMU → points
-        font_size = max(7, min(11, int(width_pt_per_char / 0.52)))
-
     for im, rect in zip(images, rects):
         ix, iy, iw, ih = rect["img"]
         pic = slide.shapes.add_picture(io.BytesIO(im["data"]), ix, iy, iw, ih)
@@ -303,24 +290,32 @@ def _fill_photo_slide(slide, photos) -> None:
             pic.crop_top = ct
             pic.crop_bottom = cb
         if rect["caption"] and im["caption"]:
-            _add_caption(slide, rect["caption"], im["caption"], font_size)
+            strip_y = rect["caption"][1]
+            _add_caption(slide, rect["img"], strip_y, im["caption"])
 
 
-def _add_caption(slide, box_rect, text, font_size=11) -> None:
-    """White caption box with theme-coloured Tajawal text, below the image.
-
-    Single line (no wrap) at a slide-uniform font size for a consistent look.
-    """
-    from pptx.util import Pt
+def _add_caption(slide, img_rect, strip_y, text) -> None:
+    """Caption styled exactly like the approved reference deck: a compact
+    white box with a thin theme border that hugs the text (single line,
+    auto-fit), Tajawal 7pt #0099A1, centred under the photo."""
+    from pptx.util import Pt, Emu, Inches
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
-    l, t, w, h = box_rect
-    box = slide.shapes.add_textbox(l, t, w, h)
+    ix, iy, iw, ih = img_rect
+    # Estimate the auto-fit box size (~2.6pt per Arabic glyph at 7pt + insets);
+    # PowerPoint re-fits it on edit thanks to spAutoFit.
+    est_w = min(iw, Emu(int((len(text) * 2.6 + 8) * 12700)))
+    est_h = Inches(0.16)
+    left = int(ix + (iw - est_w) / 2)
+    top = int(strip_y + Inches(0.03))
+
+    box = slide.shapes.add_textbox(left, top, int(est_w), int(est_h))
     box.fill.solid()
     box.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
     box.line.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
     box.line.width = Pt(0.75)
+
     tf = box.text_frame
     tf.word_wrap = False
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -328,21 +323,31 @@ def _add_caption(slide, box_rect, text, font_size=11) -> None:
     tf.margin_bottom = Pt(1)
     tf.margin_left = Pt(3)
     tf.margin_right = Pt(3)
+    # spAutoFit: the box hugs its text like in the reference deck.
+    bodyPr = tf._txBody.find(qn("a:bodyPr"))
+    for tag in ("a:normAutofit", "a:noAutofit", "a:spAutoFit"):
+        el = bodyPr.find(qn(tag))
+        if el is not None:
+            bodyPr.remove(el)
+    bodyPr.append(bodyPr.makeelement(qn("a:spAutoFit"), {}))
+
     p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
     run.text = text
-    run.font.size = Pt(font_size)
-    run.font.bold = True
-    run.font.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
+    run.font.size = Pt(7)
+    run.font.bold = False
+    run.font.color.rgb = RGBColor(0x00, 0x99, 0xA1)
     run.font.name = "Tajawal"
-
-
-MAX_TABLE_ROWS_PER_SLIDE = 9  # item/section rows, excluding the header row
+    rPr = run._r.find(qn("a:rPr"))
+    cs = rPr.makeelement(qn("a:cs"), {"typeface": "Tajawal"})
+    rPr.append(cs)
 
 
 def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -> None:
     """One merged notes table: a header, then per-section rows with their items."""
+    from pptx.util import Inches
+
     rows = []  # ("section", label) | ("item", item, note)
     for category in NOTE_CATEGORIES:
         notes = notes_by_category.get(category)
@@ -355,24 +360,39 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
     if not rows:
         return
 
-    # Chunk across slides. A section header is never left as a slide's last
-    # row (it moves to the next slide), and a section whose items continue on
-    # a new slide gets its header repeated with "(تابع)".
+    # Chunk across slides by actual row heights (section rows reuse the tall
+    # header row of the template) so the table never spills past the slide.
+    template_trs = table_template.findall(qn("a:graphic") + "/" + qn("a:graphicData") + "/" + qn("a:tbl") + "/" + qn("a:tr"))
+    header_h = int(template_trs[0].get("h"))
+    item_h = int(template_trs[1].get("h"))
+    budget = int(Inches(5.8)) - header_h  # content area minus the header row
+
+    def row_h(row):
+        return header_h if row[0] == "section" else item_h
+
+    # A section header is never left as a slide's last row (it moves to the
+    # next slide), and a section whose items continue on a new slide gets its
+    # header repeated with "(تابع)".
     chunks = []
     current = []
+    used = 0
     active = None  # label of the section whose items are currently flowing
     for row in rows:
         if row[0] == "section":
             active = row[1]
-        if len(current) >= MAX_TABLE_ROWS_PER_SLIDE:
+        if current and used + row_h(row) > budget:
             moved = current.pop() if current[-1][0] == "section" else None
             chunks.append(current)
             current = []
+            used = 0
             if moved is not None:
                 current.append(moved)  # fresh header on the new slide, no تابع
+                used += header_h
             elif row[0] == "item" and active:
                 current.append(("section", f"{active} (تابع)"))
+                used += header_h
         current.append(row)
+        used += row_h(row)
     if current:
         chunks.append(current)
 
