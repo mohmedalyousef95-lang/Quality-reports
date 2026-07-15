@@ -4,6 +4,7 @@ import { api, type Report, type School, type ReportPhoto } from '../api'
 import { PHOTO_CATEGORIES, PHOTO_CATEGORY_LABELS, NOTE_CATEGORIES, NOTE_CATEGORY_LABELS } from '../constants'
 import PhotoUploader from '../components/PhotoUploader'
 import ChecklistSection from '../components/ChecklistSection'
+import VisitInfoSection from '../components/VisitInfoSection'
 import { showToast } from '../components/Toast'
 
 export default function ReportEditor() {
@@ -67,6 +68,19 @@ export default function ReportEditor() {
           {report.visit_date} · {report.visitor_name}
         </div>
       </div>
+
+      <VisitInfoSection
+        reportId={report.id}
+        initial={{
+          contractor: report.contractor || '',
+          visit_type: report.visit_type || '',
+          during_readiness_plan: report.during_readiness_plan || '',
+          team_count: report.team_count ?? null,
+          oversight_supervisor_present: report.oversight_supervisor_present || '',
+          team_types: report.team_types || '',
+          important_notes: report.important_notes || '',
+        }}
+      />
 
       <section className="section-block">
         <h2>الصور</h2>

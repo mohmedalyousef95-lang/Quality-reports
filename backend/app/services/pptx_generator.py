@@ -119,36 +119,82 @@ def _add_school_info_slide(prs, school, report) -> None:
     if contractor:
         rows.append(("المقاول المسؤول", contractor))
 
+    visit_type = (getattr(report, "visit_type", "") or "").strip()
+    if visit_type:
+        label = "زيارة تفقدية" if visit_type == "تفقدية" else "زيارة أثناء خطة الاستعداد المدرسي"
+        rows.append(("نوع الزيارة", label))
+
+    during_readiness = (getattr(report, "during_readiness_plan", "") or "").strip()
+    if during_readiness:
+        rows.append(("أثناء خطة الاستعداد المدرسي؟", during_readiness))
+
+    team_count = getattr(report, "team_count", None)
+    if team_count is not None:
+        rows.append(("عدد الفرق أثناء الزيارة", str(team_count)))
+
+    oversight_present = (getattr(report, "oversight_supervisor_present", "") or "").strip()
+    if oversight_present:
+        rows.append(("مشرف مكتب العمران متواجد؟", oversight_present))
+
+    team_types = (getattr(report, "team_types", "") or "").strip()
+    if team_types:
+        rows.append(("نوع الفرق الموجودة", team_types))
+
+    important_notes = (getattr(report, "important_notes", "") or "").strip()
+
     layout = prs.slides[-1].slide_layout  # "Title Only" (theme background)
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title is not None:
         slide.shapes.title.text = "معلومات المدرسة"
         _force_title_font(slide.shapes.title)
 
-    # Centred info card built as a 2-column table.
+    # Centred info card built as a 2-column table. When present, the
+    # "important notes" section is two extra merged rows appended at the
+    # bottom of the same table/card — same styling, no layout disruption
+    # when the field is left blank.
     n = len(rows)
     tbl_w = Inches(10.5)
     row_h = Inches(0.64)
-    tbl_h = row_h * n
+    notes_header_h = Inches(0.5)
+    notes_value_h = Inches(1.1)
+    total_rows = n + (2 if important_notes else 0)
+    tbl_h = row_h * n + ((notes_header_h + notes_value_h) if important_notes else 0)
+
     content_top, content_bottom = Inches(1.5), Inches(7.2)
     left = int((prs.slide_width - tbl_w) / 2)
     top = int(content_top + max(0, (content_bottom - content_top - tbl_h)) / 2)
-    graphic = slide.shapes.add_table(n, 2, left, top, tbl_w, int(tbl_h))
+    graphic = slide.shapes.add_table(total_rows, 2, left, top, tbl_w, int(tbl_h))
     table = graphic.table
     table.first_row = False
     table.horz_banding = False
     table.columns[0].width = int(tbl_w * 0.62)  # value (left)
     table.columns[1].width = int(tbl_w * 0.38)  # label (right)
 
-    teal = RGBColor(0x0F, 0x76, 0x6E)
-    dark = RGBColor(0x16, 0x21, 0x1F)
+    # Matches the cover's exact identity (#0099A1, Tajawal) so the info
+    # slide reads as a continuation of the cover rather than a new style.
+    accent = RGBColor(0x00, 0x99, 0xA1)
     light = RGBColor(0xEC, 0xF3, 0xF2)
     white = RGBColor(0xFF, 0xFF, 0xFF)
 
     for i, (label, value) in enumerate(rows):
-        _style_cell(table.cell(i, 1), label, teal, light, bold=True, size=16, anchor=PP_ALIGN.RIGHT)
-        _style_cell(table.cell(i, 0), value, dark, white, bold=False, size=16, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 1), label, accent, light, bold=True, size=14, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 0), value, accent, white, bold=False, size=14, anchor=PP_ALIGN.RIGHT)
         table.rows[i].height = int(row_h)
+
+    if important_notes:
+        header_cell = table.cell(n, 0)
+        header_cell.merge(table.cell(n, 1))
+        _style_cell(
+            header_cell, "الملاحظات المهمة", accent, light, bold=True, size=14, anchor=PP_ALIGN.CENTER
+        )
+        table.rows[n].height = int(notes_header_h)
+
+        value_cell = table.cell(n + 1, 0)
+        value_cell.merge(table.cell(n + 1, 1))
+        _style_cell(
+            value_cell, important_notes, accent, white, bold=False, size=13, anchor=PP_ALIGN.RIGHT
+        )
+        table.rows[n + 1].height = int(notes_value_h)
 
     _move_slide(prs, from_index=len(prs.slides) - 1, to_index=1)
 

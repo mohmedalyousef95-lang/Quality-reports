@@ -18,7 +18,9 @@ GRID_CANDIDATES = {
     3: [(3, 1), (2, 2)],
     4: [(2, 2), (3, 2)],
     5: [(3, 2), (2, 3)],
-    6: [(3, 2), (2, 3)],
+    # Always exactly 2 rows (3 columns) for 6 photos — large, clear tiles
+    # that fill the slide, per explicit request.
+    6: [(3, 2)],
 }
 
 # Never crop away more than this fraction of a photo's width/height.

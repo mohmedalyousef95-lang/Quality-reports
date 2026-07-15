@@ -15,6 +15,12 @@ NEW_COLUMNS = [
     ("reports", "completed_at", "TIMESTAMP"),
     ("reports", "contractor", "VARCHAR DEFAULT ''"),
     ("report_photos", "caption", "VARCHAR DEFAULT ''"),
+    ("reports", "visit_type", "VARCHAR DEFAULT ''"),
+    ("reports", "during_readiness_plan", "VARCHAR DEFAULT ''"),
+    ("reports", "team_count", "INTEGER"),
+    ("reports", "oversight_supervisor_present", "VARCHAR DEFAULT ''"),
+    ("reports", "team_types", "VARCHAR DEFAULT ''"),
+    ("reports", "important_notes", "TEXT DEFAULT ''"),
 ]
 
 

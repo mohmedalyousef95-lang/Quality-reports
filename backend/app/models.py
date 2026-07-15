@@ -49,6 +49,15 @@ class Report(Base):
     status = Column(String, default="draft", index=True)  # draft | completed
     completed_at = Column(DateTime)
 
+    # Extra visit info (all optional/flexible — shown on the info slide only
+    # when filled in, so leaving them blank never affects the layout).
+    visit_type = Column(String, default="")  # تفقدية | خطة الاستعداد المدرسي
+    during_readiness_plan = Column(String, default="")  # "" | نعم | لا
+    team_count = Column(Integer)
+    oversight_supervisor_present = Column(String, default="")  # "" | نعم | لا
+    team_types = Column(String, default="")  # comma-separated
+    important_notes = Column(Text, default="")
+
     school = relationship("School", back_populates="reports")
     photos = relationship(
         "ReportPhoto",

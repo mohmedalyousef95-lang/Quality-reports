@@ -46,6 +46,16 @@ class ReportCreate(BaseModel):
     contractor: str = ""
 
 
+class ReportInfoUpdate(BaseModel):
+    contractor: str = ""
+    visit_type: str = ""
+    during_readiness_plan: str = ""
+    team_count: Optional[int] = None
+    oversight_supervisor_present: str = ""
+    team_types: str = ""
+    important_notes: str = ""
+
+
 class ReportNoteIn(BaseModel):
     category: str
     item: str
@@ -91,6 +101,13 @@ class ReportOut(BaseModel):
     visitor_name: Optional[str] = None
     created_at: datetime
     status: Optional[str] = "draft"
+    contractor: Optional[str] = ""
+    visit_type: Optional[str] = ""
+    during_readiness_plan: Optional[str] = ""
+    team_count: Optional[int] = None
+    oversight_supervisor_present: Optional[str] = ""
+    team_types: Optional[str] = ""
+    important_notes: Optional[str] = ""
     photos: list[ReportPhotoOut] = []
     notes: list[ReportNoteOut] = []
 

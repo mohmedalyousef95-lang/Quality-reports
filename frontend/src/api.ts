@@ -109,6 +109,12 @@ export const api = {
       body: JSON.stringify({ category, notes }),
     }),
 
+  updateReportInfo: (reportId: number, info: ReportInfo) =>
+    request<Report>(`/api/reports/${reportId}/info`, {
+      method: 'PUT',
+      body: JSON.stringify(info),
+    }),
+
   downloadUrl: (reportId: number) => `/api/reports/${reportId}/download`,
 
   // Fetch the generated PPTX as a blob and trigger a save. Using fetch (not a
@@ -175,7 +181,17 @@ export type NoteInput = {
   position: number
 }
 
-export type Report = {
+export type ReportInfo = {
+  contractor: string
+  visit_type: string
+  during_readiness_plan: string
+  team_count: number | null
+  oversight_supervisor_present: string
+  team_types: string
+  important_notes: string
+}
+
+export type Report = ReportInfo & {
   id: number
   school_id: string
   visit_date: string

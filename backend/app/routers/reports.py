@@ -16,6 +16,7 @@ from ..schemas import (
     ReportRow,
     FilterOptions,
     PhotoCaptionUpdate,
+    ReportInfoUpdate,
 )
 from ..constants import PHOTO_CATEGORIES, NOTE_CATEGORIES, MAX_PHOTOS_PER_CATEGORY
 
@@ -165,6 +166,17 @@ def _counts_and_sections(db: Session, model, report_ids):
 @router.get("/{report_id}", response_model=ReportOut)
 def get_report(report_id: int, db: Session = Depends(get_db)):
     return _get_report_or_404(report_id, db)
+
+
+@router.put("/{report_id}/info", response_model=ReportOut)
+def update_report_info(report_id: int, payload: ReportInfoUpdate, db: Session = Depends(get_db)):
+    report = _get_report_or_404(report_id, db)
+    for field, value in payload.model_dump().items():
+        setattr(report, field, value)
+    report.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(report)
+    return report
 
 
 @router.delete("/{report_id}")
