@@ -171,6 +171,7 @@ export type ReportNote = {
   category: string
   item: string
   note: string
+  status: string
   position: number
 }
 
@@ -178,6 +179,7 @@ export type NoteInput = {
   category: string
   item: string
   note: string
+  status: string
   position: number
 }
 

@@ -276,6 +276,7 @@ def replace_notes(report_id: int, payload: ReportNotesReplace, db: Session = Dep
                 category=payload.category,
                 item=note_in.item,
                 note=note_in.note,
+                status=note_in.status,
                 position=position,
             )
         )

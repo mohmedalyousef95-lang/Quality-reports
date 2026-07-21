@@ -44,6 +44,7 @@ def generate_report_pptx(school, report, output_path) -> None:
     notes_layout = src_slide.slide_layout
     src_table_el = next(sh for sh in src_slide.shapes if sh.has_table)._element
     table_template = deepcopy(src_table_el)
+    _expand_notes_table_to_three_cols(table_template)
     _add_combined_notes_slides(prs, notes_by_category, notes_layout, table_template)
 
     for idx in sorted(NOTE_SLIDE_INDEX.values(), reverse=True):
@@ -145,54 +146,70 @@ def _add_school_info_slide(prs, school, report) -> None:
     layout = prs.slides[-1].slide_layout  # "Title Only" (theme background)
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title is not None:
-        slide.shapes.title.text = "معلومات المدرسة"
-        _force_title_font(slide.shapes.title)
+        title_shape = slide.shapes.title
+        title_shape.text = "معلومات المدرسة"
+        _force_title_font(title_shape)
+        # This layout is borrowed from the closing slide, whose title sits
+        # mid-page (designed to overlay a full-bleed photo there) — wrong
+        # for a normal heading here. Pin it to a plain top banner so it
+        # never collides with the info card below it.
+        title_shape.left = Inches(0.6)
+        title_shape.top = Inches(0.22)
+        title_shape.width = Inches(12.1)
+        title_shape.height = Inches(0.7)
+        title_shape.text_frame.paragraphs[0].alignment = PP_ALIGN.RIGHT
 
-    # Centred info card built as a 2-column table. When present, the
-    # "important notes" section is two extra merged rows appended at the
-    # bottom of the same table/card — same styling, no layout disruption
-    # when the field is left blank.
+    # Anchored to the top-right (not centred) so it's always the first thing
+    # visible and quick to find while editing. Row height/font are tiered by
+    # row count so the whole card — worst case 12 rows plus the 2-row notes
+    # section — always stays clear of the slide edges.
     n = len(rows)
-    tbl_w = Inches(10.5)
-    row_h = Inches(0.64)
-    notes_header_h = Inches(0.5)
-    notes_value_h = Inches(1.1)
     total_rows = n + (2 if important_notes else 0)
+
+    if total_rows <= 7:
+        row_h, size, notes_header_h, notes_value_h = Inches(0.60), 14, Inches(0.42), Inches(0.90)
+    elif total_rows <= 10:
+        row_h, size, notes_header_h, notes_value_h = Inches(0.50), 13, Inches(0.38), Inches(0.75)
+    else:
+        row_h, size, notes_header_h, notes_value_h = Inches(0.40), 12, Inches(0.34), Inches(0.62)
+
+    tbl_w = Inches(7.3)
+    right_margin = Inches(0.6)
+    top = Inches(1.0)
     tbl_h = row_h * n + ((notes_header_h + notes_value_h) if important_notes else 0)
 
-    content_top, content_bottom = Inches(1.5), Inches(7.2)
-    left = int((prs.slide_width - tbl_w) / 2)
-    top = int(content_top + max(0, (content_bottom - content_top - tbl_h)) / 2)
-    graphic = slide.shapes.add_table(total_rows, 2, left, top, tbl_w, int(tbl_h))
+    left = int(prs.slide_width - right_margin - tbl_w)
+    graphic = slide.shapes.add_table(total_rows, 2, left, int(top), int(tbl_w), int(tbl_h))
     table = graphic.table
     table.first_row = False
     table.horz_banding = False
     table.columns[0].width = int(tbl_w * 0.62)  # value (left)
     table.columns[1].width = int(tbl_w * 0.38)  # label (right)
 
-    # Matches the cover's exact identity (#0099A1, Tajawal) so the info
-    # slide reads as a continuation of the cover rather than a new style.
+    # Matches the cover's exact identity (#0099A1, Tajawal, same size as the
+    # "اسم الزائر" line) so the info slide reads as a continuation of the
+    # cover rather than a new style.
     accent = RGBColor(0x00, 0x99, 0xA1)
     light = RGBColor(0xEC, 0xF3, 0xF2)
     white = RGBColor(0xFF, 0xFF, 0xFF)
 
     for i, (label, value) in enumerate(rows):
-        _style_cell(table.cell(i, 1), label, accent, light, bold=True, size=14, anchor=PP_ALIGN.RIGHT)
-        _style_cell(table.cell(i, 0), value, accent, white, bold=False, size=14, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 1), label, accent, light, bold=True, size=size, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 0), value, accent, white, bold=False, size=size, anchor=PP_ALIGN.RIGHT)
         table.rows[i].height = int(row_h)
 
     if important_notes:
         header_cell = table.cell(n, 0)
         header_cell.merge(table.cell(n, 1))
         _style_cell(
-            header_cell, "الملاحظات المهمة", accent, light, bold=True, size=14, anchor=PP_ALIGN.CENTER
+            header_cell, "الملاحظات المهمة", accent, light, bold=True, size=size, anchor=PP_ALIGN.CENTER
         )
         table.rows[n].height = int(notes_header_h)
 
         value_cell = table.cell(n + 1, 0)
         value_cell.merge(table.cell(n + 1, 1))
         _style_cell(
-            value_cell, important_notes, accent, white, bold=False, size=13, anchor=PP_ALIGN.RIGHT
+            value_cell, important_notes, accent, white, bold=False, size=max(11, size - 1), anchor=PP_ALIGN.RIGHT
         )
         table.rows[n + 1].height = int(notes_value_h)
 
@@ -338,7 +355,7 @@ def _fill_photo_slide(slide, photos) -> None:
 
     n = len(images)
     gap = Inches(0.12)
-    caption_h = Inches(0.38)  # fits a two-line caption box (0.03 + 0.34)
+    caption_h = Inches(0.32)  # fits a two-line caption box (0.03 + 0.28)
     rects = compute_layout(
         n, area,
         [im["aspect"] for im in images],
@@ -389,24 +406,26 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
     """White caption bar as wide as its photo, directly beneath it.
 
     The frame adapts to the text so nothing ever spills out: one line at
-    7pt when it fits, otherwise it wraps to a second line (taller box),
-    and shrinks to 6pt as a last resort. Text is centred both ways,
-    Tajawal, theme colour #0099A1 with the thin 0F766E border."""
+    6pt when it fits, otherwise it wraps to a second line (taller box),
+    and shrinks to 5pt as a last resort. Text is centred both ways,
+    Tajawal, theme colour #0099A1 with the thin 0F766E border. Sized a
+    notch smaller than before to leave more of the slide for the photos
+    themselves, especially with up to 10 photos on one slide."""
     from pptx.util import Pt, Inches
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
     ix, iy, iw, ih = img_rect
     inner_pt = iw / 12700 - 8  # usable width in points (minus insets)
-    est_pt_per_char = 2.6  # average Arabic glyph width at 7pt
+    est_pt_per_char = 2.25  # average Arabic glyph width at 6pt
 
-    font_size = 7
+    font_size = 6
     lines = 1
     if len(text) * est_pt_per_char > inner_pt:
         lines = 2
         if len(text) * est_pt_per_char > inner_pt * 2:
-            font_size = 6
-    box_h = Inches(0.18) if lines == 1 else Inches(0.34)
+            font_size = 5
+    box_h = Inches(0.15) if lines == 1 else Inches(0.28)
 
     box = slide.shapes.add_textbox(int(ix), int(strip_y + Inches(0.03)), int(iw), int(box_h))
     box.fill.solid()
@@ -440,11 +459,67 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
     rPr.append(cs)
 
 
+def _expand_notes_table_to_three_cols(table_template) -> None:
+    """Turn the template's cloned 2-column notes table (item | note) into
+    three columns: ملاحظات الزيارة الميدانية | إجراءات المعالجة | هل تمت
+    المعالجة؟. The new status column is cloned from the note column so it
+    keeps the exact same borders/fill/font — only the header labels and
+    column widths change; the table's own colours/alignment are untouched."""
+    tbl = table_template.find(qn("a:graphic") + "/" + qn("a:graphicData") + "/" + qn("a:tbl"))
+    grid = tbl.find(qn("a:tblGrid"))
+    grid_cols = grid.findall(qn("a:gridCol"))
+    total_w = int(grid_cols[0].get("w")) + int(grid_cols[1].get("w"))
+
+    new_w0 = int(total_w * 0.38)  # ملاحظات الزيارة الميدانية
+    new_w1 = int(total_w * 0.40)  # إجراءات المعالجة
+    new_w2 = total_w - new_w0 - new_w1  # هل تمت المعالجة؟
+    grid_cols[0].set("w", str(new_w0))
+    grid_cols[1].set("w", str(new_w1))
+    status_col = deepcopy(grid_cols[1])
+    status_col.set("w", str(new_w2))
+    grid.append(status_col)
+
+    for tr in tbl.findall(qn("a:tr")):
+        tcs = tr.findall(qn("a:tc"))
+        tr.append(deepcopy(tcs[1]))
+
+    header_tcs = tbl.findall(qn("a:tr"))[0].findall(qn("a:tc"))
+    _set_tc_text(header_tcs[0], "ملاحظات الزيارة الميدانية")
+    _set_tc_text(header_tcs[1], "إجراءات المعالجة")
+    _set_tc_text(header_tcs[2], "هل تمت المعالجة؟")
+
+
+def _set_tc_text(tc_el, text: str) -> None:
+    """Like _set_cell_text, but for a raw <a:tc> element not yet wrapped by
+    a python-pptx table (used before the template table is attached to any
+    slide)."""
+    txBody = tc_el.find(qn("a:txBody"))
+    p = txBody.find(qn("a:p"))
+    runs = p.findall(qn("a:r"))
+    if runs:
+        run = runs[0]
+        t = run.find(qn("a:t"))
+        t.text = text
+        for extra in runs[1:]:
+            p.remove(extra)
+    else:
+        end_para_rpr = p.find(qn("a:endParaRPr"))
+        run = p.makeelement(qn("a:r"), {})
+        if end_para_rpr is not None:
+            rpr = deepcopy(end_para_rpr)
+            rpr.tag = qn("a:rPr")
+            run.append(rpr)
+        t = p.makeelement(qn("a:t"), {})
+        t.text = text
+        run.append(t)
+        p.append(run)
+
+
 def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -> None:
     """One merged notes table: a header, then per-section rows with their items."""
     from pptx.util import Inches
 
-    rows = []  # ("section", label) | ("item", item, note)
+    rows = []  # ("section", label) | ("item", item, note, status)
     for category in NOTE_CATEGORIES:
         notes = notes_by_category.get(category)
         if not notes:
@@ -453,7 +528,7 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
         # Priority order: items carrying an actual observation first,
         # empty/OK items after (stable within each group).
         for note in sorted(notes, key=lambda n: 0 if (n.note or "").strip() else 1):
-            rows.append(("item", note.item, note.note or ""))
+            rows.append(("item", note.item, note.note or "", getattr(note, "status", "") or ""))
 
     if not rows:
         return
@@ -528,12 +603,14 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
         cells = table.rows[i].cells
         if row[0] == "section":
             _set_cell_text(cells[0], row[1])
-            _set_cell_text(cells[1], "")
-            cells[0].merge(cells[1])
+            for c_idx in range(1, len(cells)):
+                _set_cell_text(cells[c_idx], "")
+            cells[0].merge(cells[len(cells) - 1])
         else:
-            _, item, note = row
+            _, item, note, status = row
             _set_cell_text(cells[0], item)
             _set_cell_text(cells[1], note or "—")
+            _set_cell_text(cells[2], status or "—")
 
     # Enlarge and centre (template look preserved; only geometry changes).
     # 11.5" wide = the same gutters as the slide titles (L=0.92).

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type ChecklistItem, type ReportNote } from '../api'
 
+const STATUS_OPTIONS = ['نعم', 'لا', 'جاري العمل عليها']
+
 type Row = {
   key: string
   item: string
   checked: boolean
   note: string
+  status: string
 }
 
 type Props = {
@@ -27,16 +30,20 @@ export default function ChecklistSection({ reportId, category, label, initialNot
   useEffect(() => {
     api.getChecklist(category).then((items) => {
       setChecklist(items)
-      const noteByItem = new Map(initialNotes.map((n) => [n.item, n.note]))
-      const built: Row[] = items.map((ci) => ({
-        key: ci.label,
-        item: ci.label,
-        checked: noteByItem.has(ci.label),
-        note: noteByItem.get(ci.label) ?? '',
-      }))
+      const noteByItem = new Map(initialNotes.map((n) => [n.item, n]))
+      const built: Row[] = items.map((ci) => {
+        const existing = noteByItem.get(ci.label)
+        return {
+          key: ci.label,
+          item: ci.label,
+          checked: noteByItem.has(ci.label),
+          note: existing?.note ?? '',
+          status: existing?.status ?? '',
+        }
+      })
       for (const n of initialNotes) {
         if (!items.some((ci) => ci.label === n.item)) {
-          built.push({ key: n.item, item: n.item, checked: true, note: n.note })
+          built.push({ key: n.item, item: n.item, checked: true, note: n.note, status: n.status ?? '' })
         }
       }
       setRows(built)
@@ -62,7 +69,7 @@ export default function ChecklistSection({ reportId, category, label, initialNot
       await api.replaceNotes(
         reportId,
         category,
-        checkedRows.map((r, i) => ({ category, item: r.item, note: r.note, position: i })),
+        checkedRows.map((r, i) => ({ category, item: r.item, note: r.note, status: r.status, position: i })),
       )
     } finally {
       setSaving(false)
@@ -77,10 +84,14 @@ export default function ChecklistSection({ reportId, category, label, initialNot
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, note } : r)))
   }
 
+  function updateStatus(key: string, status: string) {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, status } : r)))
+  }
+
   async function addCustom() {
     const text = customText.trim()
     if (!text) return
-    setRows((prev) => [...prev, { key: text, item: text, checked: true, note: '' }])
+    setRows((prev) => [...prev, { key: text, item: text, checked: true, note: '', status: '' }])
     setCustomText('')
     if (saveToChecklist && !checklist.some((ci) => ci.label === text)) {
       try {
@@ -106,13 +117,27 @@ export default function ChecklistSection({ reportId, category, label, initialNot
               <span>{row.item}</span>
             </label>
             {row.checked && (
-              <input
-                type="text"
-                className="input note-input"
-                placeholder="ملاحظة (اختياري)"
-                value={row.note}
-                onChange={(e) => updateNote(row.key, e.target.value)}
-              />
+              <div className="checklist-row-fields">
+                <input
+                  type="text"
+                  className="input note-input"
+                  placeholder="إجراءات المعالجة (اختياري)"
+                  value={row.note}
+                  onChange={(e) => updateNote(row.key, e.target.value)}
+                />
+                <select
+                  className="select status-select"
+                  value={row.status}
+                  onChange={(e) => updateStatus(row.key, e.target.value)}
+                >
+                  <option value="">هل تمت المعالجة؟</option>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
         ))}

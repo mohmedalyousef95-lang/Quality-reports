@@ -21,6 +21,10 @@ GRID_CANDIDATES = {
     # Always exactly 2 rows (3 columns) for 6 photos — large, clear tiles
     # that fill the slide, per explicit request.
     6: [(3, 2)],
+    7: [(4, 2), (3, 3)],
+    8: [(4, 2)],
+    9: [(3, 3)],
+    10: [(5, 2), (4, 3)],
 }
 
 # Never crop away more than this fraction of a photo's width/height.
@@ -29,7 +33,7 @@ MAX_CROP = 0.5
 
 def compute_layout(n, area, aspects, captions, gap, caption_h):
     """Pick the grid whose cells need the least cropping/letterboxing overall."""
-    n = max(1, min(6, len(aspects) if aspects else n))
+    n = max(1, min(10, len(aspects) if aspects else n))
     aspects = [(a if a else 1.0) for a in (aspects or [1.0] * n)]
     captions = list(captions or [False] * n)
 

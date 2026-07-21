@@ -60,6 +60,7 @@ class ReportNoteIn(BaseModel):
     category: str
     item: str
     note: str = ""
+    status: str = ""
     position: int = 0
 
 
@@ -89,6 +90,7 @@ class ReportNoteOut(BaseModel):
     category: str
     item: str
     note: str
+    status: Optional[str] = ""
     position: int
 
 

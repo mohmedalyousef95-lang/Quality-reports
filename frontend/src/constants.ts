@@ -17,4 +17,4 @@ export const NOTE_CATEGORY_LABELS: Record<string, string> = {
   other: 'أخرى',
 }
 
-export const MAX_PHOTOS_PER_CATEGORY = 6
+export const MAX_PHOTOS_PER_CATEGORY = 10

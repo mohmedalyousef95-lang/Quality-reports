@@ -94,6 +94,7 @@ class ReportNote(Base):
     category = Column(String, nullable=False)
     item = Column(String, nullable=False)
     note = Column(Text, default="")
+    status = Column(String, default="")  # "" | نعم | لا | جاري العمل عليها
     position = Column(Integer, default=0)
 
     report = relationship("Report", back_populates="notes")

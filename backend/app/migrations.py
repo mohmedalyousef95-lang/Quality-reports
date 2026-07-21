@@ -21,6 +21,7 @@ NEW_COLUMNS = [
     ("reports", "oversight_supervisor_present", "VARCHAR DEFAULT ''"),
     ("reports", "team_types", "VARCHAR DEFAULT ''"),
     ("reports", "important_notes", "TEXT DEFAULT ''"),
+    ("report_notes", "status", "VARCHAR DEFAULT ''"),
 ]
 
 

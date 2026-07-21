@@ -28,7 +28,7 @@ NOTE_SLIDE_INDEX = {
     "other": 10,
 }
 COVER_SLIDE_INDEX = 0
-MAX_PHOTOS_PER_CATEGORY = 6
+MAX_PHOTOS_PER_CATEGORY = 10
 
 DEFAULT_CHECKLIST_ITEMS = {
     "ac": ["صيانة الفلتر", "تعبئة الفريون", "جودة التبريد"],
