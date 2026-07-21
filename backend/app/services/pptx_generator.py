@@ -151,13 +151,14 @@ def _add_school_info_slide(prs, school, report) -> None:
         _force_title_font(title_shape)
         # This layout is borrowed from the closing slide, whose title sits
         # mid-page (designed to overlay a full-bleed photo there) — wrong
-        # for a normal heading here. Pin it to a plain top banner so it
-        # never collides with the info card below it.
-        title_shape.left = Inches(0.6)
-        title_shape.top = Inches(0.22)
-        title_shape.width = Inches(12.1)
-        title_shape.height = Inches(0.7)
-        title_shape.text_frame.paragraphs[0].alignment = PP_ALIGN.RIGHT
+        # for a normal heading here. Pin it to the exact same top banner
+        # geometry every other slide's title uses (839788, 365125,
+        # 10515600, 722053 EMU) so margins/alignment stay uniform across
+        # the whole deck.
+        title_shape.left = 839788
+        title_shape.top = 365125
+        title_shape.width = 10515600
+        title_shape.height = 722053
 
     # Anchored to the top-right (not centred) so it's always the first thing
     # visible and quick to find while editing. Row height/font are tiered by
@@ -169,13 +170,13 @@ def _add_school_info_slide(prs, school, report) -> None:
     if total_rows <= 7:
         row_h, size, notes_header_h, notes_value_h = Inches(0.60), 14, Inches(0.42), Inches(0.90)
     elif total_rows <= 10:
-        row_h, size, notes_header_h, notes_value_h = Inches(0.50), 13, Inches(0.38), Inches(0.75)
+        row_h, size, notes_header_h, notes_value_h = Inches(0.48), 13, Inches(0.36), Inches(0.70)
     else:
-        row_h, size, notes_header_h, notes_value_h = Inches(0.40), 12, Inches(0.34), Inches(0.62)
+        row_h, size, notes_header_h, notes_value_h = Inches(0.38), 12, Inches(0.32), Inches(0.58)
 
     tbl_w = Inches(7.3)
-    right_margin = Inches(0.6)
-    top = Inches(1.0)
+    right_margin = Inches(0.92)  # same gutter as every other slide's content area
+    top = Inches(1.35)  # clears the (now uniformly-positioned) title above it
     tbl_h = row_h * n + ((notes_header_h + notes_value_h) if important_notes else 0)
 
     left = int(prs.slide_width - right_margin - tbl_w)
@@ -461,32 +462,43 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
 
 def _expand_notes_table_to_three_cols(table_template) -> None:
     """Turn the template's cloned 2-column notes table (item | note) into
-    three columns: ملاحظات الزيارة الميدانية | إجراءات المعالجة | هل تمت
-    المعالجة؟. The new status column is cloned from the note column so it
+    three columns: ملاحظات الزيارة الميدانية | إجراءات المعالجة | هل تم
+    الإجراء؟. The new status column is cloned from the note column so it
     keeps the exact same borders/fill/font — only the header labels and
-    column widths change; the table's own colours/alignment are untouched."""
+    column widths change; the table's own colours/borders are untouched.
+    The status column's own text is centred (rather than right-aligned
+    like the free-text note column) since its values are short fixed
+    answers, for clearer reading."""
     tbl = table_template.find(qn("a:graphic") + "/" + qn("a:graphicData") + "/" + qn("a:tbl"))
     grid = tbl.find(qn("a:tblGrid"))
     grid_cols = grid.findall(qn("a:gridCol"))
     total_w = int(grid_cols[0].get("w")) + int(grid_cols[1].get("w"))
 
-    new_w0 = int(total_w * 0.38)  # ملاحظات الزيارة الميدانية
-    new_w1 = int(total_w * 0.40)  # إجراءات المعالجة
-    new_w2 = total_w - new_w0 - new_w1  # هل تمت المعالجة؟
+    new_w0 = int(total_w * 0.37)  # ملاحظات الزيارة الميدانية
+    new_w1 = int(total_w * 0.39)  # إجراءات المعالجة
+    new_w2 = total_w - new_w0 - new_w1  # هل تم الإجراء؟
     grid_cols[0].set("w", str(new_w0))
     grid_cols[1].set("w", str(new_w1))
     status_col = deepcopy(grid_cols[1])
     status_col.set("w", str(new_w2))
     grid.append(status_col)
 
-    for tr in tbl.findall(qn("a:tr")):
+    trs = tbl.findall(qn("a:tr"))
+    for tr in trs:
         tcs = tr.findall(qn("a:tc"))
         tr.append(deepcopy(tcs[1]))
 
-    header_tcs = tbl.findall(qn("a:tr"))[0].findall(qn("a:tc"))
+    header_tcs = trs[0].findall(qn("a:tc"))
     _set_tc_text(header_tcs[0], "ملاحظات الزيارة الميدانية")
     _set_tc_text(header_tcs[1], "إجراءات المعالجة")
-    _set_tc_text(header_tcs[2], "هل تمت المعالجة؟")
+    _set_tc_text(header_tcs[2], "هل تم الإجراء؟")
+
+    # Centre the status column's text in the item-row template (row 1) —
+    # the header row is already centred, this only affects data rows.
+    item_status_tc = trs[1].findall(qn("a:tc"))[2]
+    status_pPr = item_status_tc.find(qn("a:txBody")).find(qn("a:p")).find(qn("a:pPr"))
+    if status_pPr is not None:
+        status_pPr.set("algn", "ctr")
 
 
 def _set_tc_text(tc_el, text: str) -> None:
@@ -544,8 +556,8 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
         return header_h if row[0] == "section" else item_h
 
     # A section header is never left as a slide's last row (it moves to the
-    # next slide), and a section whose items continue on a new slide gets its
-    # header repeated with "(تابع)".
+    # next slide), and a section whose items continue on a new slide gets
+    # its header repeated as-is — no "(تابع)" suffix anywhere.
     chunks = []
     current = []
     used = 0
@@ -559,19 +571,18 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
             current = []
             used = 0
             if moved is not None:
-                current.append(moved)  # fresh header on the new slide, no تابع
+                current.append(moved)  # fresh header on the new slide
                 used += header_h
             elif row[0] == "item" and active:
-                current.append(("section", f"{active} (تابع)"))
+                current.append(("section", active))
                 used += header_h
         current.append(row)
         used += row_h(row)
     if current:
         chunks.append(current)
 
-    for i, chunk in enumerate(chunks):
-        title = "ملاحظات الزيارة" if i == 0 else "ملاحظات الزيارة (تابع)"
-        _build_notes_table_slide(prs, layout, title, chunk, table_template)
+    for chunk in chunks:
+        _build_notes_table_slide(prs, layout, "ملاحظات الزيارة", chunk, table_template)
 
 
 def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
