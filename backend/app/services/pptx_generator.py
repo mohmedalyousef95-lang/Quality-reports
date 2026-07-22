@@ -463,7 +463,7 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
 def _expand_notes_table_to_three_cols(table_template) -> None:
     """Turn the template's cloned 2-column notes table (item | note) into
     three columns: ملاحظات الزيارة الميدانية | إجراءات المعالجة | هل تم
-    الإجراء؟. The new status column is cloned from the note column so it
+    الإجراء. The new status column is cloned from the note column so it
     keeps the exact same borders/fill/font — only the header labels and
     column widths change; the table's own colours/borders are untouched.
     The status column's own text is centred (rather than right-aligned
@@ -491,7 +491,21 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     header_tcs = trs[0].findall(qn("a:tc"))
     _set_tc_text(header_tcs[0], "ملاحظات الزيارة الميدانية")
     _set_tc_text(header_tcs[1], "إجراءات المعالجة")
-    _set_tc_text(header_tcs[2], "هل تم الإجراء؟")
+    _set_tc_text(header_tcs[2], "هل تم الإجراء")
+
+    # Reviewed reference: the new status header cell uses the theme's
+    # accent1 fill (not the literal 0099A1 the other two headers keep)
+    # and drops the bottom border, telling it apart as the added column.
+    status_header_tcPr = header_tcs[2].find(qn("a:tcPr"))
+    lnB = status_header_tcPr.find(qn("a:lnB"))
+    if lnB is not None:
+        status_header_tcPr.remove(lnB)
+    old_fill = status_header_tcPr.find(qn("a:solidFill"))
+    if old_fill is not None:
+        status_header_tcPr.remove(old_fill)
+    new_fill = status_header_tcPr.makeelement(qn("a:solidFill"), {})
+    new_fill.append(status_header_tcPr.makeelement(qn("a:schemeClr"), {"val": "accent1"}))
+    status_header_tcPr.append(new_fill)
 
     # Centre the status column's text in the item-row template (row 1) —
     # the header row is already centred, this only affects data rows.
