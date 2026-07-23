@@ -462,54 +462,68 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
 
 def _expand_notes_table_to_three_cols(table_template) -> None:
     """Turn the template's cloned 2-column notes table (item | note) into
-    three columns: ملاحظات الزيارة الميدانية | إجراءات المعالجة | هل تم
-    الإجراء. The new status column is cloned from the note column so it
-    keeps the exact same borders/fill/font — only the header labels and
-    column widths change; the table's own colours/borders are untouched.
-    The status column's own text is centred (rather than right-aligned
-    like the free-text note column) since its values are short fixed
-    answers, for clearer reading."""
+    the reviewed three-column layout:
+
+    Row 0 — a single cell merged across all 3 columns: "ملاحظات الزيارة"
+            (the table's own title banner).
+    Row 1 — 3 separate column-title cells: ملاحظة الزيارة | إجراءات
+            المعالجة | حالة المعالجة — same fill/font as row 0.
+    Row 2+ — item rows (unchanged: 3 separate cells, no merge).
+
+    The new status column is cloned from the note column so it keeps the
+    exact same borders/fill/font as the other two."""
     tbl = table_template.find(qn("a:graphic") + "/" + qn("a:graphicData") + "/" + qn("a:tbl"))
     grid = tbl.find(qn("a:tblGrid"))
     grid_cols = grid.findall(qn("a:gridCol"))
     total_w = int(grid_cols[0].get("w")) + int(grid_cols[1].get("w"))
 
-    new_w0 = int(total_w * 0.37)  # ملاحظات الزيارة الميدانية
+    new_w0 = int(total_w * 0.37)  # ملاحظة الزيارة
     new_w1 = int(total_w * 0.39)  # إجراءات المعالجة
-    new_w2 = total_w - new_w0 - new_w1  # هل تم الإجراء؟
+    new_w2 = total_w - new_w0 - new_w1  # حالة المعالجة
     grid_cols[0].set("w", str(new_w0))
     grid_cols[1].set("w", str(new_w1))
     status_col = deepcopy(grid_cols[1])
     status_col.set("w", str(new_w2))
     grid.append(status_col)
 
+    # Every <a:tr> in this template ends with a trailing <a:extLst> sibling
+    # after its 2 original <a:tc> cells. A plain tr.append() would put the
+    # new cell AFTER that extLst, which corrupts python-pptx's tc.col_idx
+    # (it indexes by position among ALL children, not just <a:tc>) — that
+    # silently produced gridSpan="4" merges later instead of "3". Inserting
+    # before extLst keeps cells contiguous and column indexing correct.
     trs = tbl.findall(qn("a:tr"))
     for tr in trs:
         tcs = tr.findall(qn("a:tc"))
-        tr.append(deepcopy(tcs[1]))
+        new_tc = deepcopy(tcs[1])
+        ext_lst = tr.find(qn("a:extLst"))
+        if ext_lst is not None:
+            ext_lst.addprevious(new_tc)
+        else:
+            tr.append(new_tc)
 
     header_tcs = trs[0].findall(qn("a:tc"))
-    _set_tc_text(header_tcs[0], "ملاحظات الزيارة الميدانية")
+    _set_tc_text(header_tcs[0], "ملاحظة الزيارة")
     _set_tc_text(header_tcs[1], "إجراءات المعالجة")
-    _set_tc_text(header_tcs[2], "هل تم الإجراء")
+    _set_tc_text(header_tcs[2], "حالة المعالجة")
 
-    # Reviewed reference: the new status header cell uses the theme's
-    # accent1 fill (not the literal 0099A1 the other two headers keep)
-    # and drops the bottom border, telling it apart as the added column.
-    status_header_tcPr = header_tcs[2].find(qn("a:tcPr"))
-    lnB = status_header_tcPr.find(qn("a:lnB"))
-    if lnB is not None:
-        status_header_tcPr.remove(lnB)
-    old_fill = status_header_tcPr.find(qn("a:solidFill"))
-    if old_fill is not None:
-        status_header_tcPr.remove(old_fill)
-    new_fill = status_header_tcPr.makeelement(qn("a:solidFill"), {})
-    new_fill.append(status_header_tcPr.makeelement(qn("a:schemeClr"), {"val": "accent1"}))
-    status_header_tcPr.append(new_fill)
+    # All 3 column-title cells share one uniform style: turquoise #0099A1
+    # fill, bold white Tajawal, centred — the status cell is no longer a
+    # special case.
+    title_tr = deepcopy(trs[0])
+    tbl.insert(0, title_tr)
+    title_tcs = title_tr.findall(qn("a:tc"))
+    _set_tc_text(title_tcs[0], "ملاحظات الزيارة")
+    _set_tc_text(title_tcs[1], "")
+    _set_tc_text(title_tcs[2], "")
+    title_tcs[0].set("gridSpan", "3")
+    title_tcs[1].set("hMerge", "1")
+    title_tcs[2].set("hMerge", "1")
 
-    # Centre the status column's text in the item-row template (row 1) —
-    # the header row is already centred, this only affects data rows.
-    item_status_tc = trs[1].findall(qn("a:tc"))[2]
+    # Centre the status column's text in the item-row template (row 2) —
+    # the header rows are already centred, this only affects data rows.
+    item_row = tbl.findall(qn("a:tr"))[2]
+    item_status_tc = item_row.findall(qn("a:tc"))[2]
     status_pPr = item_status_tc.find(qn("a:txBody")).find(qn("a:p")).find(qn("a:pPr"))
     if status_pPr is not None:
         status_pPr.set("algn", "ctr")
@@ -561,10 +575,13 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
 
     # Chunk across slides by actual row heights (section rows reuse the tall
     # header row of the template) so the table never spills past the slide.
+    # Every slide repeats both fixed rows: the merged title banner (row 0)
+    # and the 3-cell column-titles row (row 1).
     template_trs = table_template.findall(qn("a:graphic") + "/" + qn("a:graphicData") + "/" + qn("a:tbl") + "/" + qn("a:tr"))
-    header_h = int(template_trs[0].get("h"))
-    item_h = int(template_trs[1].get("h"))
-    budget = int(Inches(5.8)) - header_h  # content area minus the header row
+    title_h = int(template_trs[0].get("h"))
+    header_h = int(template_trs[1].get("h"))
+    item_h = int(template_trs[2].get("h"))
+    budget = int(Inches(5.8)) - title_h - header_h  # content area minus both fixed rows
 
     def row_h(row):
         return header_h if row[0] == "section" else item_h
@@ -616,15 +633,18 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
     table = table_shape.table
     tbl = table._tbl
 
-    header_tr = tbl.tr_lst[0]
-    item_tr_template = deepcopy(tbl.tr_lst[1])  # a formatted content row
-    for tr in list(tbl.tr_lst[1:]):
+    # tr_lst[0] is the merged title banner, tr_lst[1] the 3-cell column
+    # titles — both repeat as-is on every chunk slide. Section rows reuse
+    # tr_lst[1]'s style (relabelled + re-merged) for their category banner.
+    header_tr = tbl.tr_lst[1]
+    item_tr_template = deepcopy(tbl.tr_lst[2])  # a formatted content row
+    for tr in list(tbl.tr_lst[2:]):
         tbl.remove(tr)
 
     for row in chunk:
         tbl.append(deepcopy(header_tr) if row[0] == "section" else deepcopy(item_tr_template))
 
-    for i, row in enumerate(chunk, start=1):
+    for i, row in enumerate(chunk, start=2):
         cells = table.rows[i].cells
         if row[0] == "section":
             _set_cell_text(cells[0], row[1])
