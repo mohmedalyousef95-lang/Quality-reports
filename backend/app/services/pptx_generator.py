@@ -533,35 +533,48 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     grid_cols = grid.findall(qn("a:gridCol"))
     total_w = int(grid_cols[0].get("w")) + int(grid_cols[1].get("w"))
 
-    new_w0 = int(total_w * 0.37)  # ملاحظة الزيارة
-    new_w1 = int(total_w * 0.39)  # إجراءات المعالجة
-    new_w2 = total_w - new_w0 - new_w1  # حالة المعالجة
-    grid_cols[0].set("w", str(new_w0))
-    grid_cols[1].set("w", str(new_w1))
-    status_col = deepcopy(grid_cols[1])
-    status_col.set("w", str(new_w2))
-    grid.append(status_col)
+    item_w = int(total_w * 0.37)  # ملاحظة الزيارة (leftmost)
+    note_w = int(total_w * 0.39)  # إجراءات المعالجة (middle)
+    status_w = total_w - item_w - note_w  # حالة المعالجة (rightmost)
+
+    # Rebuild tblGrid in physical right-to-left order: status, note, item —
+    # under rtl="1" the first gridCol renders on the right. This is a full
+    # mirror of the original layout, per explicit request.
+    status_gridcol = deepcopy(grid_cols[1])
+    status_gridcol.set("w", str(status_w))
+    grid_cols[1].set("w", str(note_w))  # note column, unchanged position
+    grid_cols[0].set("w", str(item_w))  # item column, stays last (leftmost)
+    for gc in grid_cols:
+        grid.remove(gc)
+    grid.append(status_gridcol)
+    grid.append(grid_cols[1])  # note
+    grid.append(grid_cols[0])  # item
 
     # Every <a:tr> in this template ends with a trailing <a:extLst> sibling
-    # after its 2 original <a:tc> cells. A plain tr.append() would put the
-    # new cell AFTER that extLst, which corrupts python-pptx's tc.col_idx
-    # (it indexes by position among ALL children, not just <a:tc>) — that
-    # silently produced gridSpan="4" merges later instead of "3". Inserting
-    # before extLst keeps cells contiguous and column indexing correct.
+    # after its 2 original <a:tc> cells (item, note). Reorder + insert the
+    # new status cell so the final physical order is [status, note, item],
+    # always placed before extLst — appending after it corrupts
+    # python-pptx's tc.col_idx (indexes by position among ALL children, not
+    # just <a:tc>), which previously produced invalid gridSpan values.
     trs = tbl.findall(qn("a:tr"))
     for tr in trs:
-        tcs = tr.findall(qn("a:tc"))
-        new_tc = deepcopy(tcs[1])
+        item_tc, note_tc = tr.findall(qn("a:tc"))
+        status_tc = deepcopy(note_tc)
         ext_lst = tr.find(qn("a:extLst"))
+        tr.remove(item_tc)
+        tr.remove(note_tc)
+        new_cells = [status_tc, note_tc, item_tc]
         if ext_lst is not None:
-            ext_lst.addprevious(new_tc)
+            for tc in new_cells:
+                ext_lst.addprevious(tc)
         else:
-            tr.append(new_tc)
+            for tc in new_cells:
+                tr.append(tc)
 
     header_tcs = trs[0].findall(qn("a:tc"))
-    _set_tc_text(header_tcs[0], "ملاحظة الزيارة")
+    _set_tc_text(header_tcs[0], "حالة المعالجة")
     _set_tc_text(header_tcs[1], "إجراءات المعالجة")
-    _set_tc_text(header_tcs[2], "حالة المعالجة")
+    _set_tc_text(header_tcs[2], "ملاحظة الزيارة")
 
     # All 3 column-title cells share one uniform style: turquoise #0099A1
     # fill, bold white Tajawal, centred — the status cell is no longer a
@@ -569,6 +582,9 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     title_tr = deepcopy(trs[0])
     tbl.insert(0, title_tr)
     title_tcs = title_tr.findall(qn("a:tc"))
+    # The merge origin must be the cell lowest in document order (col_idx 0)
+    # regardless of which side it renders on — gridSpan/hMerge are indexed
+    # by position among the <a:tc> children, not by visual left/right.
     _set_tc_text(title_tcs[0], "ملاحظات الزيارة")
     _set_tc_text(title_tcs[1], "")
     _set_tc_text(title_tcs[2], "")
@@ -579,7 +595,7 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     # Centre the status column's text in the item-row template (row 2) —
     # the header rows are already centred, this only affects data rows.
     item_row = tbl.findall(qn("a:tr"))[2]
-    item_status_tc = item_row.findall(qn("a:tc"))[2]
+    item_status_tc = item_row.findall(qn("a:tc"))[0]
     status_pPr = item_status_tc.find(qn("a:txBody")).find(qn("a:p")).find(qn("a:pPr"))
     if status_pPr is not None:
         status_pPr.set("algn", "ctr")
@@ -731,9 +747,9 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
             cells[0].merge(cells[len(cells) - 1])
         else:
             _, item, note, status = row
-            _set_cell_text(cells[0], item)
+            _set_cell_text(cells[0], status or "—")
             _set_cell_text(cells[1], note or "—")
-            _set_cell_text(cells[2], status or "—")
+            _set_cell_text(cells[2], item)
 
     # Enlarge and centre (template look preserved; only geometry changes).
     # 11.5" wide = the same gutters as the slide titles (L=0.92).
