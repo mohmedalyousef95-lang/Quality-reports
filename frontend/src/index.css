@@ -470,6 +470,7 @@ button, input {
 
 .checklist-row-fields {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
 }
@@ -477,9 +478,11 @@ button, input {
 .checklist-row-fields .note-input {
   margin-top: 0;
   flex: 1;
+  min-width: 160px;
 }
 
-.status-select {
+.status-select,
+.suggestion-select {
   flex: 0 0 auto;
   width: auto;
   min-width: 140px;

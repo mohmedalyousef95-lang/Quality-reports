@@ -39,6 +39,16 @@ class ChecklistItemCreate(BaseModel):
     label: str
 
 
+class NoteSuggestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    item: str
+    text: str
+    position: int
+
+
 class ReportCreate(BaseModel):
     school_id: str
     visit_date: date

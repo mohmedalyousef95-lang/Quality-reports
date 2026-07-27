@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type ChecklistItem, type ReportNote } from '../api'
+import { api, type ChecklistItem, type NoteSuggestion, type ReportNote } from '../api'
 
 const STATUS_OPTIONS = ['نعم', 'لا', 'جاري العمل عليها']
 
@@ -20,12 +20,21 @@ type Props = {
 
 export default function ChecklistSection({ reportId, category, label, initialNotes }: Props) {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([])
+  const [suggestions, setSuggestions] = useState<NoteSuggestion[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [customText, setCustomText] = useState('')
   const [saveToChecklist, setSaveToChecklist] = useState(true)
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef<number | undefined>(undefined)
   const initialized = useRef(false)
+
+  useEffect(() => {
+    api.getNoteSuggestions().then(setSuggestions).catch(() => {})
+  }, [])
+
+  function suggestionsFor(item: string) {
+    return suggestions.filter((s) => s.category === category && s.item === item)
+  }
 
   useEffect(() => {
     api.getChecklist(category).then((items) => {
@@ -118,6 +127,22 @@ export default function ChecklistSection({ reportId, category, label, initialNot
             </label>
             {row.checked && (
               <div className="checklist-row-fields">
+                {suggestionsFor(row.item).length > 0 && (
+                  <select
+                    className="select suggestion-select"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) updateNote(row.key, e.target.value)
+                    }}
+                  >
+                    <option value="">ملاحظات جاهزة...</option>
+                    {suggestionsFor(row.item).map((s) => (
+                      <option key={s.id} value={s.text}>
+                        {s.text}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <input
                   type="text"
                   className="input note-input"

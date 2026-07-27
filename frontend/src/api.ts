@@ -60,6 +60,7 @@ export const api = {
     }),
   deleteChecklistItem: (id: number) =>
     request<{ ok: boolean }>(`/api/checklist/${id}`, { method: 'DELETE' }),
+  getNoteSuggestions: () => request<NoteSuggestion[]>('/api/checklist/note-suggestions'),
 
   createReport: (payload: {
     school_id: string
@@ -155,6 +156,14 @@ export type ChecklistItem = {
   id: number
   category: string
   label: string
+  position: number
+}
+
+export type NoteSuggestion = {
+  id: number
+  category: string
+  item: string
+  text: string
   position: number
 }
 

@@ -107,3 +107,18 @@ class ChecklistItem(Base):
     category = Column(String, nullable=False, index=True)
     label = Column(String, nullable=False)
     position = Column(Integer, default=0)
+
+
+class NoteSuggestion(Base):
+    """A ready-made note phrase offered as a dropdown option for a specific
+    checklist item, to cut down on manual typing (e.g. "صيانة الفلتر" ->
+    "غسل الفلتر" / "استبدال الفلتر" / ...). Free-text entry remains
+    available regardless."""
+
+    __tablename__ = "note_suggestions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(String, nullable=False, index=True)
+    item = Column(String, nullable=False, index=True)
+    text = Column(String, nullable=False)
+    position = Column(Integer, default=0)

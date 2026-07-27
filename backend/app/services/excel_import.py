@@ -1,8 +1,8 @@
 import openpyxl
 
 from ..database import SessionLocal
-from ..models import School, ChecklistItem
-from ..constants import DEFAULT_CHECKLIST_ITEMS
+from ..models import School, ChecklistItem, NoteSuggestion
+from ..constants import DEFAULT_CHECKLIST_ITEMS, DEFAULT_NOTE_SUGGESTIONS
 from ..config import SEED_XLSX_PATH
 
 COLUMNS = [
@@ -68,6 +68,24 @@ def seed_checklist_items() -> None:
             for position, label in enumerate(items):
                 db.add(
                     ChecklistItem(category=category, label=label, position=position)
+                )
+        db.commit()
+    finally:
+        db.close()
+
+
+def seed_note_suggestions() -> None:
+    db = SessionLocal()
+    try:
+        existing = db.query(NoteSuggestion).count()
+        if existing > 0:
+            return
+        for (category, item), texts in DEFAULT_NOTE_SUGGESTIONS.items():
+            for position, text in enumerate(texts):
+                db.add(
+                    NoteSuggestion(
+                        category=category, item=item, text=text, position=position
+                    )
                 )
         db.commit()
     finally:

@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_auth
 from ..database import get_db
-from ..models import ChecklistItem
-from ..schemas import ChecklistItemOut, ChecklistItemCreate
+from ..models import ChecklistItem, NoteSuggestion
+from ..schemas import ChecklistItemOut, ChecklistItemCreate, NoteSuggestionOut
 from ..constants import NOTE_CATEGORIES
 
 router = APIRouter(
@@ -18,6 +18,16 @@ def list_checklist_items(category: str | None = None, db: Session = Depends(get_
     if category:
         query = query.filter(ChecklistItem.category == category)
     return query.order_by(ChecklistItem.category, ChecklistItem.position).all()
+
+
+@router.get("/note-suggestions", response_model=list[NoteSuggestionOut])
+def list_note_suggestions(db: Session = Depends(get_db)):
+    """All ready-made note phrases, grouped client-side by (category, item)."""
+    return (
+        db.query(NoteSuggestion)
+        .order_by(NoteSuggestion.category, NoteSuggestion.item, NoteSuggestion.position)
+        .all()
+    )
 
 
 @router.post("", response_model=ChecklistItemOut)
