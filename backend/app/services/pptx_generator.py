@@ -533,48 +533,35 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     grid_cols = grid.findall(qn("a:gridCol"))
     total_w = int(grid_cols[0].get("w")) + int(grid_cols[1].get("w"))
 
-    item_w = int(total_w * 0.37)  # ملاحظة الزيارة (leftmost)
-    note_w = int(total_w * 0.39)  # إجراءات المعالجة (middle)
-    status_w = total_w - item_w - note_w  # حالة المعالجة (rightmost)
-
-    # Rebuild tblGrid in physical right-to-left order: status, note, item —
-    # under rtl="1" the first gridCol renders on the right. This is a full
-    # mirror of the original layout, per explicit request.
-    status_gridcol = deepcopy(grid_cols[1])
-    status_gridcol.set("w", str(status_w))
-    grid_cols[1].set("w", str(note_w))  # note column, unchanged position
-    grid_cols[0].set("w", str(item_w))  # item column, stays last (leftmost)
-    for gc in grid_cols:
-        grid.remove(gc)
-    grid.append(status_gridcol)
-    grid.append(grid_cols[1])  # note
-    grid.append(grid_cols[0])  # item
+    new_w0 = int(total_w * 0.37)  # ملاحظة الزيارة
+    new_w1 = int(total_w * 0.39)  # إجراءات المعالجة
+    new_w2 = total_w - new_w0 - new_w1  # حالة المعالجة
+    grid_cols[0].set("w", str(new_w0))
+    grid_cols[1].set("w", str(new_w1))
+    status_col = deepcopy(grid_cols[1])
+    status_col.set("w", str(new_w2))
+    grid.append(status_col)
 
     # Every <a:tr> in this template ends with a trailing <a:extLst> sibling
-    # after its 2 original <a:tc> cells (item, note). Reorder + insert the
-    # new status cell so the final physical order is [status, note, item],
-    # always placed before extLst — appending after it corrupts
-    # python-pptx's tc.col_idx (indexes by position among ALL children, not
-    # just <a:tc>), which previously produced invalid gridSpan values.
+    # after its 2 original <a:tc> cells. A plain tr.append() would put the
+    # new cell AFTER that extLst, which corrupts python-pptx's tc.col_idx
+    # (it indexes by position among ALL children, not just <a:tc>) — that
+    # silently produced gridSpan="4" merges later instead of "3". Inserting
+    # before extLst keeps cells contiguous and column indexing correct.
     trs = tbl.findall(qn("a:tr"))
     for tr in trs:
-        item_tc, note_tc = tr.findall(qn("a:tc"))
-        status_tc = deepcopy(note_tc)
+        tcs = tr.findall(qn("a:tc"))
+        new_tc = deepcopy(tcs[1])
         ext_lst = tr.find(qn("a:extLst"))
-        tr.remove(item_tc)
-        tr.remove(note_tc)
-        new_cells = [status_tc, note_tc, item_tc]
         if ext_lst is not None:
-            for tc in new_cells:
-                ext_lst.addprevious(tc)
+            ext_lst.addprevious(new_tc)
         else:
-            for tc in new_cells:
-                tr.append(tc)
+            tr.append(new_tc)
 
     header_tcs = trs[0].findall(qn("a:tc"))
-    _set_tc_text(header_tcs[0], "حالة المعالجة")
+    _set_tc_text(header_tcs[0], "ملاحظة الزيارة")
     _set_tc_text(header_tcs[1], "إجراءات المعالجة")
-    _set_tc_text(header_tcs[2], "ملاحظة الزيارة")
+    _set_tc_text(header_tcs[2], "حالة المعالجة")
 
     # All 3 column-title cells share one uniform style: turquoise #0099A1
     # fill, bold white Tajawal, centred — the status cell is no longer a
@@ -582,9 +569,6 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     title_tr = deepcopy(trs[0])
     tbl.insert(0, title_tr)
     title_tcs = title_tr.findall(qn("a:tc"))
-    # The merge origin must be the cell lowest in document order (col_idx 0)
-    # regardless of which side it renders on — gridSpan/hMerge are indexed
-    # by position among the <a:tc> children, not by visual left/right.
     _set_tc_text(title_tcs[0], "ملاحظات الزيارة")
     _set_tc_text(title_tcs[1], "")
     _set_tc_text(title_tcs[2], "")
@@ -595,7 +579,7 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     # Centre the status column's text in the item-row template (row 2) —
     # the header rows are already centred, this only affects data rows.
     item_row = tbl.findall(qn("a:tr"))[2]
-    item_status_tc = item_row.findall(qn("a:tc"))[0]
+    item_status_tc = item_row.findall(qn("a:tc"))[2]
     status_pPr = item_status_tc.find(qn("a:txBody")).find(qn("a:p")).find(qn("a:pPr"))
     if status_pPr is not None:
         status_pPr.set("algn", "ctr")
@@ -604,38 +588,6 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     # of times for a report with many notes), so trimming boilerplate here
     # multiplies into a real file-size/parse-time saving.
     _strip_redundant_border_xml(tbl)
-
-    # Every row/cell/column here traces back to deepcopy()s of the same 2-3
-    # template rows, so they all carry the SAME PowerPoint-internal a16:rowId
-    # /colId/cellId tracking extensions — e.g. the note and status columns
-    # ended up with an identical colId. Duplicated IDs like that reportedly
-    # confused LibreOffice's column-order handling on import (a mirrored
-    # column order rendered as if it were never mirrored). These IDs are
-    # optional editing metadata, not required for layout, so stripping them
-    # from the template — before it gets cloned further — is both the fix
-    # and the simplest one (no clone ever inherits an ID to collide with).
-    _strip_a16_tracking_ids(tbl)
-
-
-def _strip_a16_tracking_ids(tbl) -> None:
-    """Remove PowerPoint's internal a16:rowId/colId/cellId tracking
-    extensions from every gridCol/tr/tc in the table. rowId, colId and
-    cellId each turned out to be wrapped in an <a:ext> with its OWN GUID
-    (not a shared one), so this matches by namespace — any <a:ext> whose
-    only content is an element in the a16 (2014 main) namespace — rather
-    than hardcoding each GUID. Leaves any other extLst content, should
-    this template ever gain any, untouched."""
-    a16_ns = "http://schemas.microsoft.com/office/drawing/2014/main"
-    for parent_tag in ("a:gridCol", "a:tr", "a:tc"):
-        for el in tbl.iter(qn(parent_tag)):
-            ext_lst = el.find(qn("a:extLst"))
-            if ext_lst is None:
-                continue
-            for ext in list(ext_lst.findall(qn("a:ext"))):
-                if any(child.tag.startswith(f"{{{a16_ns}}}") for child in ext):
-                    ext_lst.remove(ext)
-            if len(ext_lst) == 0:
-                el.remove(ext_lst)
 
 
 def _strip_redundant_border_xml(tbl) -> None:
@@ -779,9 +731,9 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
             cells[0].merge(cells[len(cells) - 1])
         else:
             _, item, note, status = row
-            _set_cell_text(cells[0], status or "—")
+            _set_cell_text(cells[0], item)
             _set_cell_text(cells[1], note or "—")
-            _set_cell_text(cells[2], item)
+            _set_cell_text(cells[2], status or "—")
 
     # Enlarge and centre (template look preserved; only geometry changes).
     # 11.5" wide = the same gutters as the slide titles (L=0.92).
