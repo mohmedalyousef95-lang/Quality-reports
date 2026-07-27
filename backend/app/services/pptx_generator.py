@@ -605,6 +605,38 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     # multiplies into a real file-size/parse-time saving.
     _strip_redundant_border_xml(tbl)
 
+    # Every row/cell/column here traces back to deepcopy()s of the same 2-3
+    # template rows, so they all carry the SAME PowerPoint-internal a16:rowId
+    # /colId/cellId tracking extensions — e.g. the note and status columns
+    # ended up with an identical colId. Duplicated IDs like that reportedly
+    # confused LibreOffice's column-order handling on import (a mirrored
+    # column order rendered as if it were never mirrored). These IDs are
+    # optional editing metadata, not required for layout, so stripping them
+    # from the template — before it gets cloned further — is both the fix
+    # and the simplest one (no clone ever inherits an ID to collide with).
+    _strip_a16_tracking_ids(tbl)
+
+
+def _strip_a16_tracking_ids(tbl) -> None:
+    """Remove PowerPoint's internal a16:rowId/colId/cellId tracking
+    extensions from every gridCol/tr/tc in the table. rowId, colId and
+    cellId each turned out to be wrapped in an <a:ext> with its OWN GUID
+    (not a shared one), so this matches by namespace — any <a:ext> whose
+    only content is an element in the a16 (2014 main) namespace — rather
+    than hardcoding each GUID. Leaves any other extLst content, should
+    this template ever gain any, untouched."""
+    a16_ns = "http://schemas.microsoft.com/office/drawing/2014/main"
+    for parent_tag in ("a:gridCol", "a:tr", "a:tc"):
+        for el in tbl.iter(qn(parent_tag)):
+            ext_lst = el.find(qn("a:extLst"))
+            if ext_lst is None:
+                continue
+            for ext in list(ext_lst.findall(qn("a:ext"))):
+                if any(child.tag.startswith(f"{{{a16_ns}}}") for child in ext):
+                    ext_lst.remove(ext)
+            if len(ext_lst) == 0:
+                el.remove(ext_lst)
+
 
 def _strip_redundant_border_xml(tbl) -> None:
     """Drop per-border child elements that just restate OOXML defaults
