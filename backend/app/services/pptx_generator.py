@@ -567,7 +567,14 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     # fill, bold white Tajawal, centred — the status cell is no longer a
     # special case.
     title_tr = deepcopy(trs[0])
-    tbl.insert(0, title_tr)
+    # <a:tbl>'s schema-fixed child order is tblPr, tblGrid, then tr* — a
+    # plain insert(0, ...) put this row before tblGrid, which python-pptx,
+    # LibreOffice and plain XML parsers all read past without complaint,
+    # but PowerPoint's stricter mobile parser rejects outright ("content
+    # this version of Office cannot display"). Inserting right after
+    # tblGrid keeps this row first among the <a:tr> siblings while staying
+    # schema-valid.
+    tbl.insert(list(tbl).index(grid) + 1, title_tr)
     title_tcs = title_tr.findall(qn("a:tc"))
     _set_tc_text(title_tcs[0], "ملاحظات الزيارة")
     _set_tc_text(title_tcs[1], "")
