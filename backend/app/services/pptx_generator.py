@@ -29,8 +29,14 @@ def generate_report_pptx(school, report, output_path) -> None:
     for photo in sorted(report.photos, key=lambda p: p.position):
         photos_by_category[photo.category].append(photo)
 
+    # Photos are fetched from R2 (a network round-trip each) — loading them
+    # all concurrently up front, instead of one-by-one inside each slide,
+    # is the single biggest lever on wall-clock generation time for a
+    # report with many photos.
+    photo_bytes = _prefetch_photo_bytes(report.photos)
+
     for category, slide_idx in PHOTO_SLIDE_INDEX.items():
-        _fill_photo_slide(prs.slides[slide_idx], photos_by_category.get(category, []))
+        _fill_photo_slide(prs.slides[slide_idx], photos_by_category.get(category, []), photo_bytes)
 
     notes_by_category = defaultdict(list)
     for note in sorted(report.notes, key=lambda n: n.position):
@@ -39,16 +45,25 @@ def generate_report_pptx(school, report, output_path) -> None:
     # One combined notes table (section header rows + item rows) replaces the
     # template's six per-category note slides. The original template table is
     # cloned so the merged table keeps the exact template styling (borders,
-    # header fill, Tajawal, RTL alignment).
+    # header fill, Tajawal, RTL alignment). The layout + a detached copy of
+    # the table are captured BEFORE deleting those slides — capturing after
+    # would leave nothing to capture, and adding the new slides before
+    # deleting the old ones (as this used to do) let python-pptx's
+    # slide-partname allocator reuse a number that was still in use by one
+    # of the freshly-added slides, writing two "slideN.xml" entries with the
+    # same name into the .pptx zip. That's a real corruption bug — some
+    # viewers pick one arbitrarily, others refuse to open the file. Deleting
+    # first keeps every add_slide() call working from a gap-free numbering.
     src_slide = prs.slides[min(NOTE_SLIDE_INDEX.values())]
     notes_layout = src_slide.slide_layout
     src_table_el = next(sh for sh in src_slide.shapes if sh.has_table)._element
     table_template = deepcopy(src_table_el)
     _expand_notes_table_to_three_cols(table_template)
-    _add_combined_notes_slides(prs, notes_by_category, notes_layout, table_template)
 
     for idx in sorted(NOTE_SLIDE_INDEX.values(), reverse=True):
         _delete_slide(prs, idx)
+
+    _add_combined_notes_slides(prs, notes_by_category, notes_layout, table_template)
 
     # Order is now: cover, photos ×4, closing, combined-notes…
     # Move the closing slide back to the end, then insert the school-info
@@ -57,6 +72,7 @@ def generate_report_pptx(school, report, output_path) -> None:
     _add_school_info_slide(prs, school, report)
 
     _add_fade_transitions(prs)
+    _renumber_slide_parts(prs)
 
     prs.save(output_path)
 
@@ -73,6 +89,28 @@ def _add_fade_transitions(prs) -> None:
         if anchor is None:
             anchor = sld.find(qn("p:cSld"))
         anchor.addnext(trans)
+
+
+def _renumber_slide_parts(prs) -> None:
+    """Force every slide part to a clean, sequential, guaranteed-unique
+    partname (slide1.xml, slide2.xml, ...) matching final slide order.
+
+    python-pptx's own slide-adding allocator (PresentationPart._next_slide_partname)
+    just computes "slide%d.xml" % (len(sldIdLst) + 1) — it never checks
+    whether that name is actually free. Deleting some of the template's
+    slides and later adding new ones (as this generator does) reliably
+    makes that formula recompute a number that's still used by an
+    untouched slide (the closing slide's partname, e.g., never gets
+    renamed by a delete elsewhere) — silently writing two zip entries
+    with the same name. That's real corruption: some viewers pick one
+    arbitrarily, others refuse to open the file. Only a final renumbering
+    pass right before save is fully robust against it.
+    """
+    from pptx.opc.packuri import PackURI
+
+    for i, sld_id in enumerate(prs.slides._sldIdLst, start=1):
+        slide_part = prs.part.related_part(sld_id.rId)
+        slide_part.partname = PackURI(f"/ppt/slides/slide{i}.xml")
 
 
 def _delete_slide(prs, index) -> None:
@@ -322,7 +360,25 @@ def _fill_cover(prs, school, report) -> None:
         break
 
 
-def _fill_photo_slide(slide, photos) -> None:
+def _prefetch_photo_bytes(photos) -> dict:
+    """Load every photo's bytes from storage (R2) concurrently.
+
+    Each load is a network round-trip; doing them one at a time inside
+    slide-building serializes report generation on network latency for
+    no reason, since the photos are all independent. Returns a
+    {file_path: bytes} map for _fill_photo_slide to use instead of
+    hitting storage itself."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    paths = list({photo.file_path for photo in photos})
+    if not paths:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(8, len(paths))) as pool:
+        results = pool.map(load_photo_bytes, paths)
+    return dict(zip(paths, results))
+
+
+def _fill_photo_slide(slide, photos, photo_bytes) -> None:
     from PIL import Image
     from pptx.util import Inches
     from .photo_layout import compute_layout
@@ -348,7 +404,7 @@ def _fill_photo_slide(slide, photos) -> None:
 
     images = []
     for photo in photos:
-        data = load_photo_bytes(photo.file_path)
+        data = photo_bytes[photo.file_path]
         with Image.open(io.BytesIO(data)) as im:
             w, h = im.size
         caption = (getattr(photo, "caption", "") or "").strip()
@@ -527,6 +583,28 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     status_pPr = item_status_tc.find(qn("a:txBody")).find(qn("a:p")).find(qn("a:pPr"))
     if status_pPr is not None:
         status_pPr.set("algn", "ctr")
+
+    # This table gets cloned once per note item/section (potentially dozens
+    # of times for a report with many notes), so trimming boilerplate here
+    # multiplies into a real file-size/parse-time saving.
+    _strip_redundant_border_xml(tbl)
+
+
+def _strip_redundant_border_xml(tbl) -> None:
+    """Drop per-border child elements that just restate OOXML defaults
+    (solid dash, no arrowheads) — identical rendering, smaller XML."""
+    for ln_tag in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+        for ln in tbl.iter(qn(ln_tag)):
+            for child_tag, default_attrs in (
+                ("a:prstDash", {"val": "solid"}),
+                ("a:headEnd", {"type": "none"}),
+                ("a:tailEnd", {"type": "none"}),
+            ):
+                child = ln.find(qn(child_tag))
+                if child is not None and all(
+                    child.get(k) == v for k, v in default_attrs.items()
+                ):
+                    ln.remove(child)
 
 
 def _set_tc_text(tc_el, text: str) -> None:
