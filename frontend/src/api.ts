@@ -135,6 +135,23 @@ export const api = {
     a.remove()
     URL.revokeObjectURL(url)
   },
+
+  // The official, fixed copy for sharing — same content, converted to PDF.
+  downloadReportPdf: async (reportId: number, filename: string) => {
+    const res = await fetch(`/api/reports/${reportId}/download-pdf`, {
+      credentials: 'include',
+    })
+    if (!res.ok) throw new Error(`download failed (${res.status})`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
 }
 
 export type School = {

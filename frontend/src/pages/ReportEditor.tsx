@@ -16,6 +16,7 @@ export default function ReportEditor() {
   const [school, setSchool] = useState<School | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   async function downloadReport() {
     if (!report || !school) return
@@ -28,6 +29,20 @@ export default function ReportEditor() {
       console.error(err)
     } finally {
       setDownloading(false)
+    }
+  }
+
+  async function downloadReportPdf() {
+    if (!report || !school) return
+    setDownloadingPdf(true)
+    try {
+      await api.downloadReportPdf(report.id, `${school.name}_${report.visit_date}.pdf`)
+      showToast('تم إصدار نسخة PDF', 'success')
+    } catch (err) {
+      showToast('تعذّر إصدار نسخة PDF، حاول مرة أخرى', 'error')
+      console.error(err)
+    } finally {
+      setDownloadingPdf(false)
     }
   }
 
@@ -116,7 +131,15 @@ export default function ReportEditor() {
           disabled={downloading}
           onClick={downloadReport}
         >
-          {downloading ? 'جارٍ إصدار التقرير...' : 'إصدار التقرير (PPTX)'}
+          {downloading ? 'جارٍ إصدار التقرير...' : 'إصدار التقرير (PPTX) — قابل للتعديل'}
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={downloadingPdf}
+          onClick={downloadReportPdf}
+        >
+          {downloadingPdf ? 'جارٍ إصدار PDF...' : 'إصدار نسخة PDF — للمشاركة الرسمية'}
         </button>
         <button
           type="button"

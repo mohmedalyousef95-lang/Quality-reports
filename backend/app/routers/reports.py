@@ -28,6 +28,7 @@ from ..services.photo_storage import (
     load_photo_bytes,
 )
 from ..services.pptx_generator import generate_report_pptx
+from ..services.pdf_export import convert_pptx_to_pdf, PdfConversionError
 
 router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[Depends(require_auth)])
 
@@ -305,3 +306,28 @@ def download_report(report_id: int, db: Session = Depends(get_db)):
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         filename=filename,
     )
+
+
+@router.get("/{report_id}/download-pdf")
+def download_report_pdf(report_id: int, db: Session = Depends(get_db)):
+    """The same report, converted to PDF for sharing — the .pptx download
+    stays the editable working copy, this is the official fixed copy."""
+    report = _get_report_or_404(report_id, db)
+    school = db.get(School, report.school_id)
+
+    report.status = "completed"
+    report.completed_at = datetime.utcnow()
+    db.commit()
+
+    filename = f"{school.name}_{report.visit_date}.pdf".replace("/", "-")
+    tmp = tempfile.NamedTemporaryFile(suffix=".pptx", delete=False)
+    tmp.close()
+
+    generate_report_pptx(school, report, tmp.name)
+
+    try:
+        pdf_path = convert_pptx_to_pdf(tmp.name)
+    except PdfConversionError as exc:
+        raise HTTPException(503, str(exc))
+
+    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
