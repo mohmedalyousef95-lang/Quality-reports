@@ -73,6 +73,7 @@ def generate_report_pptx(school, report, output_path) -> None:
 
     _add_fade_transitions(prs)
     _renumber_slide_parts(prs)
+    _validate_deck_integrity(prs)
 
     prs.save(output_path)
 
@@ -111,6 +112,71 @@ def _renumber_slide_parts(prs) -> None:
     for i, sld_id in enumerate(prs.slides._sldIdLst, start=1):
         slide_part = prs.part.related_part(sld_id.rId)
         slide_part.partname = PackURI(f"/ppt/slides/slide{i}.xml")
+
+
+def _validate_deck_integrity(prs) -> None:
+    """Fail loudly, before save, instead of shipping a file real PowerPoint
+    silently refuses to open. This guards against a re-run of the exact
+    defects tracked down this session — each one passed every "does the
+    file open in python-pptx / is the XML well-formed" check we had at the
+    time, so those checks alone aren't enough:
+
+    - table child order: <a:tbl>'s schema is tblPr?, tblGrid, tr* in that
+      exact order. python-pptx and LibreOffice both read past a row
+      inserted before tblGrid without complaint; PowerPoint's mobile
+      parser doesn't and rejects the whole file as unopenable.
+    - duplicate a16:rowId/colId/cellId: harmless-looking PowerPoint
+      tracking metadata that ends up duplicated across every clone of a
+      template row/column — also enough on its own to make PowerPoint
+      mobile refuse to open the file.
+    - duplicate slide partnames: python-pptx's own slide-partname
+      allocator can hand out a name that's still in use (see
+      _renumber_slide_parts above); this re-checks the outcome.
+    """
+    a16_ns = "http://schemas.microsoft.com/office/drawing/2014/main"
+    seen_a16_ids = set()
+
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not shape.has_table:
+                continue
+            tbl = shape.table._tbl
+            children = list(tbl)
+            idx = 0
+            if idx < len(children) and children[idx].tag == qn("a:tblPr"):
+                idx += 1
+            if idx >= len(children) or children[idx].tag != qn("a:tblGrid"):
+                raise ValueError(
+                    f"جدول بدون tblGrid في الترتيب الصحيح (شريحة: {slide.slide_id})"
+                )
+            idx += 1
+            if any(c.tag != qn("a:tr") for c in children[idx:]):
+                raise ValueError(
+                    f"ترتيب عناصر الجدول غير مطابق للمخطط (schema) — "
+                    f"tblPr/tblGrid يجب أن يسبقا كل الصفوف (شريحة: {slide.slide_id})"
+                )
+
+            for parent_tag in ("a:gridCol", "a:tr", "a:tc"):
+                for el in tbl.iter(qn(parent_tag)):
+                    ext_lst = el.find(qn("a:extLst"))
+                    if ext_lst is None:
+                        continue
+                    for ext in ext_lst.findall(qn("a:ext")):
+                        for child in ext:
+                            if not child.tag.startswith(f"{{{a16_ns}}}"):
+                                continue
+                            key = (child.tag, child.get("val"))
+                            if key in seen_a16_ids:
+                                raise ValueError(
+                                    f"معرّف a16 مكرر عبر صفوف/أعمدة الجدول: {key} "
+                                    f"(شريحة: {slide.slide_id}) — يجب تجريد الجدول "
+                                    "من معرّفات a16 قبل استنساخه لكل شريحة."
+                                )
+                            seen_a16_ids.add(key)
+
+    partnames = [prs.part.related_part(sld_id.rId).partname for sld_id in prs.slides._sldIdLst]
+    if len(partnames) != len(set(partnames)):
+        raise ValueError(f"أسماء أجزاء ZIP لشرائح مكررة: {partnames}")
 
 
 def _delete_slide(prs, index) -> None:
@@ -198,10 +264,10 @@ def _add_school_info_slide(prs, school, report) -> None:
         title_shape.width = 10515600
         title_shape.height = 722053
 
-    # Anchored to the top-right (not centred) so it's always the first thing
-    # visible and quick to find while editing. Row height/font are tiered by
-    # row count so the whole card — worst case 12 rows plus the 2-row notes
-    # section — always stays clear of the slide edges.
+    # Enlarged to the same 11.5" content width every other slide uses
+    # (title/notes-table gutters: 0.92" on each side), all text centred.
+    # Row height/font are still tiered by row count so the whole card —
+    # worst case 12 rows plus the notes section — stays clear of the edges.
     n = len(rows)
     total_rows = n + (2 if important_notes else 0)
 
@@ -212,7 +278,16 @@ def _add_school_info_slide(prs, school, report) -> None:
     else:
         row_h, size, notes_header_h, notes_value_h = Inches(0.38), 12, Inches(0.32), Inches(0.58)
 
-    tbl_w = Inches(7.3)
+    notes_lines = []
+    if important_notes:
+        notes_lines = [ln.strip() for ln in important_notes.splitlines() if ln.strip()] or [important_notes]
+        # Each note is now its own numbered paragraph rather than one
+        # wrapped block, so the row needs to grow with the line count
+        # instead of the original single-block estimate.
+        line_h = Inches((size + 10) / 72.0)
+        notes_value_h = max(notes_value_h, int(line_h * len(notes_lines)) + Inches(0.15))
+
+    tbl_w = Inches(11.5)
     right_margin = Inches(0.92)  # same gutter as every other slide's content area
     top = Inches(1.35)  # clears the (now uniformly-positioned) title above it
     tbl_h = row_h * n + ((notes_header_h + notes_value_h) if important_notes else 0)
@@ -222,8 +297,8 @@ def _add_school_info_slide(prs, school, report) -> None:
     table = graphic.table
     table.first_row = False
     table.horz_banding = False
-    table.columns[0].width = int(tbl_w * 0.62)  # value (left)
-    table.columns[1].width = int(tbl_w * 0.38)  # label (right)
+    table.columns[0].width = int(tbl_w * 0.70)  # value (left)
+    table.columns[1].width = int(tbl_w * 0.30)  # label (right)
 
     # Matches the cover's exact identity (#0099A1, Tajawal, same size as the
     # "اسم الزائر" line) so the info slide reads as a continuation of the
@@ -233,8 +308,8 @@ def _add_school_info_slide(prs, school, report) -> None:
     white = RGBColor(0xFF, 0xFF, 0xFF)
 
     for i, (label, value) in enumerate(rows):
-        _style_cell(table.cell(i, 1), label, accent, light, bold=True, size=size, anchor=PP_ALIGN.RIGHT)
-        _style_cell(table.cell(i, 0), value, accent, white, bold=False, size=size, anchor=PP_ALIGN.RIGHT)
+        _style_cell(table.cell(i, 1), label, accent, light, bold=True, size=size, anchor=PP_ALIGN.CENTER)
+        _style_cell(table.cell(i, 0), value, accent, white, bold=False, size=size, anchor=PP_ALIGN.CENTER)
         table.rows[i].height = int(row_h)
 
     if important_notes:
@@ -247,9 +322,7 @@ def _add_school_info_slide(prs, school, report) -> None:
 
         value_cell = table.cell(n + 1, 0)
         value_cell.merge(table.cell(n + 1, 1))
-        _style_cell(
-            value_cell, important_notes, accent, white, bold=False, size=max(11, size - 1), anchor=PP_ALIGN.RIGHT
-        )
+        _style_important_notes_cell(value_cell, notes_lines, white, size=max(11, size - 1))
         table.rows[n + 1].height = int(notes_value_h)
 
     _move_slide(prs, from_index=len(prs.slides) - 1, to_index=1)
@@ -296,6 +369,35 @@ def _style_cell(cell, text, color, fill, bold, size, anchor) -> None:
     run.font.bold = bold
     run.font.name = "Tajawal"
     run.font.color.rgb = color
+
+
+def _style_important_notes_cell(cell, lines, fill, size) -> None:
+    """Important notes get their own styling: one numbered, bold, red
+    paragraph per line (instead of _style_cell's single plain run) so they
+    stand out from the rest of the info card."""
+    from pptx.util import Pt
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.dml.color import RGBColor
+
+    red = RGBColor(0xC0, 0x00, 0x00)
+    cell.fill.solid()
+    cell.fill.fore_color.rgb = fill
+    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+    cell.margin_top = Pt(2)
+    cell.margin_bottom = Pt(2)
+    cell.margin_left = Pt(6)
+    cell.margin_right = Pt(6)
+    tf = cell.text_frame
+    tf.word_wrap = True
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = f"{i + 1}. {line}"
+        run.font.size = Pt(size)
+        run.font.bold = True
+        run.font.name = "Tajawal"
+        run.font.color.rgb = red
 
 
 def _fill_cover(prs, school, report) -> None:
@@ -745,6 +847,17 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
     if slide.shapes.title is not None:
         slide.shapes.title.text = title
         _force_title_font(slide.shapes.title)
+
+    # add_slide() clones every layout placeholder onto the new slide,
+    # including this layout's unused empty "body" placeholder — nothing
+    # ever fills it, so it just sits there as a stray empty text box
+    # (visible as a dashed "click to add text" box in PowerPoint's editor,
+    # overlapping the table). Drop it; the table is the only content here.
+    title_el = slide.shapes.title._element if slide.shapes.title is not None else None
+    for ph in list(slide.placeholders):
+        if ph._element is title_el:
+            continue
+        ph._element.getparent().remove(ph._element)
 
     gf_el = deepcopy(table_template)
     slide.shapes._spTree.append(gf_el)
