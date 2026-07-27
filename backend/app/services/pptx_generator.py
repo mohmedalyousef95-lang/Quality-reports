@@ -3,9 +3,11 @@ from collections import defaultdict
 from copy import deepcopy
 
 from pptx import Presentation
+from pptx.dml.color import RGBColor
 from pptx.enum.shapes import PP_PLACEHOLDER
-from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.oxml.ns import qn
+from pptx.util import Inches, Pt
 
 from ..config import TEMPLATE_PATH
 from ..constants import (
@@ -204,9 +206,6 @@ def _extract_locality(address) -> str:
 
 
 def _add_school_info_slide(prs, school, report) -> None:
-    from pptx.util import Inches
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
 
     region = school.region or ""
     locality = _extract_locality(school.address)
@@ -331,26 +330,21 @@ def _add_school_info_slide(prs, school, report) -> None:
 def _force_title_font(title_shape, size=26) -> None:
     """Ensure the slide title uses Tajawal at a uniform size (template
     inherits 24pt; the reviewed spec asks for slightly larger titles)."""
-    from pptx.util import Pt
-    from pptx.oxml.ns import qn as _qn
-
     for para in title_shape.text_frame.paragraphs:
         for run in para.runs:
             run.font.name = "Tajawal"
             if size:
                 run.font.size = Pt(size)
-            rPr = run._r.find(_qn("a:rPr"))
+            rPr = run._r.find(qn("a:rPr"))
             if rPr is not None:
-                cs = rPr.find(_qn("a:cs"))
+                cs = rPr.find(qn("a:cs"))
                 if cs is None:
-                    cs = rPr.makeelement(_qn("a:cs"), {})
+                    cs = rPr.makeelement(qn("a:cs"), {})
                     rPr.append(cs)
                 cs.set("typeface", "Tajawal")
 
 
 def _style_cell(cell, text, color, fill, bold, size, anchor) -> None:
-    from pptx.util import Pt
-    from pptx.enum.text import MSO_ANCHOR
 
     cell.fill.solid()
     cell.fill.fore_color.rgb = fill
@@ -375,9 +369,6 @@ def _style_important_notes_cell(cell, lines, fill, size) -> None:
     """Important notes get their own styling: one numbered, bold, red
     paragraph per line (instead of _style_cell's single plain run) so they
     stand out from the rest of the info card."""
-    from pptx.util import Pt
-    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-    from pptx.dml.color import RGBColor
 
     red = RGBColor(0xC0, 0x00, 0x00)
     cell.fill.solid()
@@ -402,7 +393,6 @@ def _style_important_notes_cell(cell, lines, fill, size) -> None:
 
 def _fill_cover(prs, school, report) -> None:
     """Cover: school name (bold, large) → visitor (regular) → visit date."""
-    from pptx.util import Pt
 
     slide = prs.slides[COVER_SLIDE_INDEX]
     visit_date_str = report.visit_date.strftime("%Y-%m-%d") if report.visit_date else ""
@@ -451,7 +441,6 @@ def _fill_cover(prs, school, report) -> None:
                 txbody.remove(p_elem)
                 txbody.append(p_elem)
         try:
-            from pptx.enum.text import MSO_ANCHOR
 
             shape.text_frame.word_wrap = True
             shape.text_frame.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
@@ -482,7 +471,6 @@ def _prefetch_photo_bytes(photos) -> dict:
 
 def _fill_photo_slide(slide, photos, photo_bytes) -> None:
     from PIL import Image
-    from pptx.util import Inches
     from .photo_layout import compute_layout
 
     if slide.shapes.title is not None:
@@ -539,8 +527,6 @@ def _fill_photo_slide(slide, photos, photo_bytes) -> None:
 
 def _style_picture(pic) -> None:
     """Light border + soft drop shadow on photos (executive polish)."""
-    from pptx.util import Pt
-    from pptx.dml.color import RGBColor
 
     pic.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
     pic.line.width = Pt(0.75)
@@ -570,9 +556,6 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
     Tajawal, theme colour #0099A1 with the thin 0F766E border. Sized a
     notch smaller than before to leave more of the slide for the photos
     themselves, especially with up to 10 photos on one slide."""
-    from pptx.util import Pt, Inches
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
     ix, iy, iw, ih = img_rect
     inner_pt = iw / 12700 - 8  # usable width in points (minus insets)
@@ -596,9 +579,7 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
     tf.word_wrap = True
     # normAutofit: PowerPoint itself shrinks the text further if an extreme
     # caption would still overflow the frame — nothing ever spills out.
-    from pptx.enum.text import MSO_AUTO_SIZE as _AS
-
-    tf.auto_size = _AS.TEXT_TO_FIT_SHAPE
+    tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     tf.margin_top = Pt(1)
     tf.margin_bottom = Pt(1)
@@ -778,7 +759,6 @@ def _set_tc_text(tc_el, text: str) -> None:
 
 def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -> None:
     """One merged notes table: a header, then per-section rows with their items."""
-    from pptx.util import Inches
 
     rows = []  # ("section", label) | ("item", item, note, status)
     for category in NOTE_CATEGORIES:
@@ -841,7 +821,6 @@ def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:
     """Clone the template's own table (its borders, header fill, Tajawal, RTL)
     and rebuild its rows: header + section rows (merged, header-styled) +
     item rows, then enlarge and centre it in the content area."""
-    from pptx.util import Inches
 
     slide = prs.slides.add_slide(layout)
     if slide.shapes.title is not None:
