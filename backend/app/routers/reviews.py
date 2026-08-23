@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..auth import require_auth
 from ..database import get_db
-from ..models import Report, Review, ReviewNote, ReviewPhoto
+from ..models import School, Report, Review, ReviewNote, ReviewPhoto
 from ..schemas import (
     ReviewCreate,
     ReviewInfoUpdate,
@@ -15,6 +15,7 @@ from ..schemas import (
     ReviewListItem,
     ReviewNoteUpdate,
     ReviewNoteCreate,
+    SchoolReviewSummary,
 )
 from ..constants import PHOTO_CATEGORIES
 from ..services.photo_storage import save_review_photo, delete_photo, delete_review_photos, load_photo_bytes
@@ -22,6 +23,43 @@ from ..services.review_pptx_generator import generate_review_pptx
 from ..services.pdf_export import convert_pptx_to_pdf, PdfConversionError
 
 router = APIRouter(prefix="/api/reviews", tags=["reviews"], dependencies=[Depends(require_auth)])
+
+
+# Registered before the "/{review_id}" routes below — FastAPI matches path
+# patterns in registration order, and "/schools" would otherwise fail to
+# convert against "/{review_id}: int" and 422 instead of falling through.
+@router.get("/schools", response_model=list[SchoolReviewSummary])
+def schools_with_reports(db: Session = Depends(get_db)):
+    """Schools that already have at least one quality report — the "تقارير
+    المراجعة" picker only makes sense for schools with something to review,
+    not the full school list. Ordered by each school's most recent report
+    date, newest first, so the ones due for a follow-up are easy to scan."""
+    reports = db.query(Report).order_by(Report.visit_date.desc()).all()
+    latest_by_school: dict[str, Report] = {}
+    for report in reports:
+        if report.school_id not in latest_by_school:
+            latest_by_school[report.school_id] = report
+
+    schools = {
+        s.ministry_number: s
+        for s in db.query(School).filter(School.ministry_number.in_(latest_by_school.keys())).all()
+    }
+
+    result = [
+        SchoolReviewSummary(
+            ministry_number=school.ministry_number,
+            name=school.name,
+            zone=school.zone,
+            engineer=school.engineer,
+            supervisor=school.supervisor,
+            latest_report_id=report.id,
+            latest_visit_date=report.visit_date,
+        )
+        for school_id, report in latest_by_school.items()
+        if (school := schools.get(school_id)) is not None
+    ]
+    result.sort(key=lambda r: r.latest_visit_date, reverse=True)
+    return result
 
 
 def _get_report_or_404(report_id: int, db: Session) -> Report:

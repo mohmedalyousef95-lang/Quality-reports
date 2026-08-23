@@ -229,3 +229,17 @@ class ReviewListItem(BaseModel):
     visitor_name: Optional[str] = None
     status: Optional[str] = "draft"
     created_at: datetime
+
+
+class SchoolReviewSummary(BaseModel):
+    """One row on the "تقارير المراجعة" school picker — a school that
+    already has at least one quality report, with its most recent
+    report's id/date so the picker can sort by it and flag overdue ones."""
+
+    ministry_number: str
+    name: str
+    zone: Optional[str] = None
+    engineer: Optional[str] = None
+    supervisor: Optional[str] = None
+    latest_report_id: int
+    latest_visit_date: date

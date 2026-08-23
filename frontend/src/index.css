@@ -899,6 +899,16 @@ button, input {
   margin: -8px 0 16px;
 }
 
+.overdue-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d32f2f;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 .report-list-item.clickable {
   cursor: pointer;
 }

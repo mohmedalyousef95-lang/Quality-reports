@@ -155,6 +155,8 @@ export const api = {
 
   // Reviews (follow-up visits) ----------------------------------------
 
+  getSchoolsWithReports: () => request<SchoolReviewSummary[]>('/api/reviews/schools'),
+
   getReportReviews: (reportId: number) =>
     request<ReviewListItem[]>(`/api/reports/${reportId}/reviews`),
 
@@ -366,4 +368,14 @@ export type ReviewListItem = {
   visitor_name?: string
   status?: string
   created_at: string
+}
+
+export type SchoolReviewSummary = {
+  ministry_number: string
+  name: string
+  zone?: string
+  engineer?: string
+  supervisor?: string
+  latest_report_id: number
+  latest_visit_date: string
 }
