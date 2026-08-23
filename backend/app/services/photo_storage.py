@@ -90,3 +90,38 @@ def delete_report_photos(report_id: int) -> None:
     import shutil
 
     shutil.rmtree(PHOTOS_DIR / str(report_id), ignore_errors=True)
+
+
+# Review "after" photos live under their own "review-{id}/" prefix — a
+# separate namespace from report photos ("{report_id}/") so a review and a
+# report can never collide on the same numeric id.
+
+
+def save_review_photo(file_obj, review_id: int) -> str:
+    data = _compress(file_obj)
+    key = f"review-{review_id}/{uuid.uuid4().hex}.jpg"
+
+    if USE_R2:
+        _get_s3().put_object(
+            Bucket=R2_BUCKET, Key=key, Body=data, ContentType="image/jpeg"
+        )
+        return key
+
+    dest_path = PHOTOS_DIR / key
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    dest_path.write_bytes(data)
+    return key
+
+
+def delete_review_photos(review_id: int) -> None:
+    """Delete every stored "after" photo belonging to a review."""
+    prefix = f"review-{review_id}"
+    if USE_R2:
+        s3 = _get_s3()
+        resp = s3.list_objects_v2(Bucket=R2_BUCKET, Prefix=f"{prefix}/")
+        for obj in resp.get("Contents", []):
+            s3.delete_object(Bucket=R2_BUCKET, Key=obj["Key"])
+        return
+    import shutil
+
+    shutil.rmtree(PHOTOS_DIR / prefix, ignore_errors=True)

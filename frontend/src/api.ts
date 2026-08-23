@@ -152,6 +152,74 @@ export const api = {
     a.remove()
     URL.revokeObjectURL(url)
   },
+
+  // Reviews (follow-up visits) ----------------------------------------
+
+  getReportReviews: (reportId: number) =>
+    request<ReviewListItem[]>(`/api/reports/${reportId}/reviews`),
+
+  createReview: (payload: { report_id: number; visit_date?: string; visitor_name?: string }) =>
+    request<Review>('/api/reviews', { method: 'POST', body: JSON.stringify(payload) }),
+  getReview: (id: number) => request<Review>(`/api/reviews/${id}`),
+  deleteReview: (id: number) => request<{ ok: boolean }>(`/api/reviews/${id}`, { method: 'DELETE' }),
+  updateReviewInfo: (id: number, info: { visit_date: string; visitor_name: string }) =>
+    request<Review>(`/api/reviews/${id}/info`, { method: 'PUT', body: JSON.stringify(info) }),
+
+  updateReviewNote: (
+    reviewId: number,
+    noteId: number,
+    payload: { note: string; response_status: string },
+  ) =>
+    request<Review>(`/api/reviews/${reviewId}/notes/${noteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  addReviewNote: (
+    reviewId: number,
+    payload: { category: string; item: string; note?: string; response_status?: string },
+  ) =>
+    request<Review>(`/api/reviews/${reviewId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteReviewNote: (reviewId: number, noteId: number) =>
+    request<Review>(`/api/reviews/${reviewId}/notes/${noteId}`, { method: 'DELETE' }),
+
+  uploadReviewPhoto: (reviewId: number, category: string, file: File) => {
+    const form = new FormData()
+    form.append('category', category)
+    form.append('file', file)
+    return request<ReviewPhoto>(`/api/reviews/${reviewId}/photos`, { method: 'POST', body: form })
+  },
+  deleteReviewPhoto: (reviewId: number, photoId: number) =>
+    request<{ ok: boolean }>(`/api/reviews/${reviewId}/photos/${photoId}`, { method: 'DELETE' }),
+
+  downloadReview: async (reviewId: number, filename: string) => {
+    const res = await fetch(`/api/reviews/${reviewId}/download`, { credentials: 'include' })
+    if (!res.ok) throw new Error(`download failed (${res.status})`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+  downloadReviewPdf: async (reviewId: number, filename: string) => {
+    const res = await fetch(`/api/reviews/${reviewId}/download-pdf`, { credentials: 'include' })
+    if (!res.ok) throw new Error(`download failed (${res.status})`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
 }
 
 export type School = {
@@ -259,4 +327,43 @@ export type FilterOptions = {
   zones: string[]
   engineers: string[]
   supervisors: string[]
+}
+
+export type ReviewNote = {
+  id: number
+  original_note_id?: number | null
+  category: string
+  item: string
+  note: string
+  response_status: string
+  position: number
+}
+
+export type ReviewPhoto = {
+  id: number
+  category: string
+  position: number
+  file_path: string
+  caption?: string
+}
+
+export type Review = {
+  id: number
+  report_id: number
+  visit_date: string
+  visitor_name?: string
+  status?: string
+  created_at: string
+  notes: ReviewNote[]
+  photos: ReviewPhoto[]
+  report: Report
+}
+
+export type ReviewListItem = {
+  id: number
+  report_id: number
+  visit_date: string
+  visitor_name?: string
+  status?: string
+  created_at: string
 }

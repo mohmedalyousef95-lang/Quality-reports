@@ -884,3 +884,69 @@ button, input {
   color: var(--primary);
   font-weight: 600;
 }
+
+/* Reviews (follow-up visits) ------------------------------------------ */
+
+.home-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: -8px 0 16px;
+}
+
+.report-list-item.clickable {
+  cursor: pointer;
+}
+
+.empty-hint.small {
+  padding: 4px 0;
+  font-size: 0.8rem;
+}
+
+.review-summary .progress-bar {
+  max-width: none;
+  height: 12px;
+  margin: 10px 0 6px;
+}
+
+.review-summary .progress-label {
+  font-size: 0.9rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.review-note-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.review-note-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.review-photo-compare {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.review-photo-col {
+  flex: 1 1 240px;
+  min-width: 240px;
+}
+
+.review-photo-col-label {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}

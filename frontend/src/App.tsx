@@ -6,6 +6,10 @@ import Home from './pages/Home'
 import ReportEditor from './pages/ReportEditor'
 import SchoolHistory from './pages/SchoolHistory'
 import ReportsList from './pages/ReportsList'
+import ReviewsHome from './pages/ReviewsHome'
+import ReviewSchoolReports from './pages/ReviewSchoolReports'
+import ReviewReportReviews from './pages/ReviewReportReviews'
+import ReviewEditor from './pages/ReviewEditor'
 import IosInstallHint from './components/IosInstallHint'
 import AppBar from './components/AppBar'
 import ToastHost from './components/Toast'
@@ -41,6 +45,10 @@ export default function App() {
         <Route path="/reports" element={<ReportsList />} />
         <Route path="/reports/:id" element={<ReportEditor />} />
         <Route path="/schools/:id" element={<SchoolHistory />} />
+        <Route path="/reviews" element={<ReviewsHome />} />
+        <Route path="/reviews/schools/:id" element={<ReviewSchoolReports />} />
+        <Route path="/reviews/reports/:reportId" element={<ReviewReportReviews />} />
+        <Route path="/reviews/:id" element={<ReviewEditor />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ToastHost />

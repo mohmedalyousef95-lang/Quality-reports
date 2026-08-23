@@ -18,3 +18,10 @@ export const NOTE_CATEGORY_LABELS: Record<string, string> = {
 }
 
 export const MAX_PHOTOS_PER_CATEGORY = 10
+
+export const REVIEW_RESPONSE_OPTIONS = [
+  'تمت المعالجة',
+  'معالجة جزئية',
+  'جاري التنفيذ',
+  'لم تتم المعالجة',
+] as const

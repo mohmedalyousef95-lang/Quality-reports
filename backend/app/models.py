@@ -122,3 +122,72 @@ class NoteSuggestion(Base):
     item = Column(String, nullable=False, index=True)
     text = Column(String, nullable=False)
     position = Column(Integer, default=0)
+
+
+class Review(Base):
+    """A follow-up visit that re-checks an existing report's notes. A
+    report can have several reviews over time (e.g. one a month later,
+    another two months later) — each is its own independent record."""
+
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=False, index=True)
+    visit_date = Column(Date, default=date.today, nullable=False)
+    visitor_name = Column(String)
+    status = Column(String, default="draft", index=True)  # draft | completed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+    report = relationship("Report")
+    notes = relationship(
+        "ReviewNote",
+        back_populates="review",
+        cascade="all, delete-orphan",
+        order_by="ReviewNote.position",
+    )
+    photos = relationship(
+        "ReviewPhoto",
+        back_populates="review",
+        cascade="all, delete-orphan",
+        order_by="ReviewPhoto.position",
+    )
+
+
+class ReviewNote(Base):
+    """One followed-up note within a review — a copy of the original
+    report's note (item/note text, kept editable) plus the review's own
+    response-status verdict. original_note_id is null for a note added
+    fresh during the review (not present in the original report)."""
+
+    __tablename__ = "review_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_id = Column(Integer, ForeignKey("reviews.id"), nullable=False, index=True)
+    original_note_id = Column(Integer, ForeignKey("report_notes.id"))
+    category = Column(String, nullable=False)
+    item = Column(String, nullable=False)
+    note = Column(Text, default="")
+    # "" | تمت المعالجة | معالجة جزئية | جاري التنفيذ | لم تتم المعالجة
+    response_status = Column(String, default="")
+    position = Column(Integer, default=0)
+
+    review = relationship("Review", back_populates="notes")
+
+
+class ReviewPhoto(Base):
+    """An "after" photo taken during the review, grouped by the same four
+    photo categories as the original report (before-photos are simply the
+    original report's own photos — never duplicated)."""
+
+    __tablename__ = "review_photos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_id = Column(Integer, ForeignKey("reviews.id"), nullable=False, index=True)
+    category = Column(String, nullable=False)
+    position = Column(Integer, default=0)
+    file_path = Column(String, nullable=False)
+    caption = Column(String, default="")
+
+    review = relationship("Review", back_populates="photos")

@@ -599,15 +599,24 @@ def _add_caption(slide, img_rect, strip_y, text) -> None:
     rPr.append(cs)
 
 
-def _expand_notes_table_to_three_cols(table_template) -> None:
+def _expand_notes_table_to_three_cols(
+    table_template,
+    title_label="ملاحظات الزيارة",
+    col_labels=("ملاحظة الزيارة", "إجراءات المعالجة", "حالة المعالجة"),
+) -> None:
     """Turn the template's cloned 2-column notes table (item | note) into
     the reviewed three-column layout:
 
-    Row 0 — a single cell merged across all 3 columns: "ملاحظات الزيارة"
+    Row 0 — a single cell merged across all 3 columns: title_label
             (the table's own title banner).
-    Row 1 — 3 separate column-title cells: ملاحظة الزيارة | إجراءات
-            المعالجة | حالة المعالجة — same fill/font as row 0.
+    Row 1 — 3 separate column-title cells: col_labels — same fill/font as
+            row 0.
     Row 2+ — item rows (unchanged: 3 separate cells, no merge).
+
+    title_label/col_labels default to the original visit-report wording;
+    the review report reuses this exact same proven structure with its
+    own labels (original note / current action / response level) instead
+    of duplicating this function.
 
     The new status column is cloned from the note column so it keeps the
     exact same borders/fill/font as the other two."""
@@ -642,9 +651,9 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
             tr.append(new_tc)
 
     header_tcs = trs[0].findall(qn("a:tc"))
-    _set_tc_text(header_tcs[0], "ملاحظة الزيارة")
-    _set_tc_text(header_tcs[1], "إجراءات المعالجة")
-    _set_tc_text(header_tcs[2], "حالة المعالجة")
+    _set_tc_text(header_tcs[0], col_labels[0])
+    _set_tc_text(header_tcs[1], col_labels[1])
+    _set_tc_text(header_tcs[2], col_labels[2])
 
     # All 3 column-title cells share one uniform style: turquoise #0099A1
     # fill, bold white Tajawal, centred — the status cell is no longer a
@@ -659,7 +668,7 @@ def _expand_notes_table_to_three_cols(table_template) -> None:
     # schema-valid.
     tbl.insert(list(tbl).index(grid) + 1, title_tr)
     title_tcs = title_tr.findall(qn("a:tc"))
-    _set_tc_text(title_tcs[0], "ملاحظات الزيارة")
+    _set_tc_text(title_tcs[0], title_label)
     _set_tc_text(title_tcs[1], "")
     _set_tc_text(title_tcs[2], "")
     title_tcs[0].set("gridSpan", "3")
@@ -757,8 +766,18 @@ def _set_tc_text(tc_el, text: str) -> None:
         p.append(run)
 
 
-def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -> None:
-    """One merged notes table: a header, then per-section rows with their items."""
+def _add_combined_notes_slides(
+    prs,
+    notes_by_category,
+    layout,
+    table_template,
+    slide_title="ملاحظات الزيارة",
+    status_of=lambda n: getattr(n, "status", "") or "",
+) -> None:
+    """One merged notes table: a header, then per-section rows with their
+    items. status_of extracts each row's 3rd-column text — the review
+    report reuses this exact chunking/pagination unchanged, just reading
+    response_status instead of status."""
 
     rows = []  # ("section", label) | ("item", item, note, status)
     for category in NOTE_CATEGORIES:
@@ -769,7 +788,7 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
         # Priority order: items carrying an actual observation first,
         # empty/OK items after (stable within each group).
         for note in sorted(notes, key=lambda n: 0 if (n.note or "").strip() else 1):
-            rows.append(("item", note.item, note.note or "", getattr(note, "status", "") or ""))
+            rows.append(("item", note.item, note.note or "", status_of(note)))
 
     if not rows:
         return
@@ -814,7 +833,7 @@ def _add_combined_notes_slides(prs, notes_by_category, layout, table_template) -
         chunks.append(current)
 
     for chunk in chunks:
-        _build_notes_table_slide(prs, layout, "ملاحظات الزيارة", chunk, table_template)
+        _build_notes_table_slide(prs, layout, slide_title, chunk, table_template)
 
 
 def _build_notes_table_slide(prs, layout, title, chunk, table_template) -> None:

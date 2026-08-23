@@ -30,6 +30,10 @@ NOTE_SLIDE_INDEX = {
 COVER_SLIDE_INDEX = 0
 MAX_PHOTOS_PER_CATEGORY = 10
 
+# How well a review found each original note addressed.
+REVIEW_RESPONSE_OPTIONS = ["تمت المعالجة", "معالجة جزئية", "جاري التنفيذ", "لم تتم المعالجة"]
+REVIEW_RESOLVED_STATUS = "تمت المعالجة"
+
 DEFAULT_CHECKLIST_ITEMS = {
     "ac": ["صيانة الفلتر", "تعبئة الفريون", "جودة التبريد"],
     "restrooms": ["نظافة المغاسل", "سلامة الأدوات الصحية", "صيانة قفل الباب"],

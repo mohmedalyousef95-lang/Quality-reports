@@ -157,3 +157,75 @@ class FilterOptions(BaseModel):
     zones: list[str]
     engineers: list[str]
     supervisors: list[str]
+
+
+class ReviewCreate(BaseModel):
+    report_id: int
+    visit_date: Optional[date] = None
+    visitor_name: str = ""
+
+
+class ReviewInfoUpdate(BaseModel):
+    visit_date: date
+    visitor_name: str = ""
+
+
+class ReviewNoteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    original_note_id: Optional[int] = None
+    category: str
+    item: str
+    note: str
+    response_status: Optional[str] = ""
+    position: int
+
+
+class ReviewNoteUpdate(BaseModel):
+    note: str = ""
+    response_status: str = ""
+
+
+class ReviewNoteCreate(BaseModel):
+    category: str
+    item: str
+    note: str = ""
+    response_status: str = ""
+
+
+class ReviewPhotoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    position: int
+    file_path: str
+    caption: Optional[str] = ""
+
+
+class ReviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    report_id: int
+    visit_date: date
+    visitor_name: Optional[str] = None
+    status: Optional[str] = "draft"
+    created_at: datetime
+    notes: list[ReviewNoteOut] = []
+    photos: list[ReviewPhotoOut] = []
+    # The original report this review follows up on — its photos/notes are
+    # the "قبل" (before) reference the review compares against.
+    report: ReportOut
+
+
+class ReviewListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    report_id: int
+    visit_date: date
+    visitor_name: Optional[str] = None
+    status: Optional[str] = "draft"
+    created_at: datetime

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..auth import require_auth
 from ..database import get_db
-from ..models import School, Report, ReportPhoto, ReportNote
+from ..models import School, Report, ReportPhoto, ReportNote, Review
 from ..schemas import (
     ReportCreate,
     ReportOut,
@@ -17,6 +17,7 @@ from ..schemas import (
     FilterOptions,
     PhotoCaptionUpdate,
     ReportInfoUpdate,
+    ReviewListItem,
 )
 from ..constants import PHOTO_CATEGORIES, NOTE_CATEGORIES, MAX_PHOTOS_PER_CATEGORY
 
@@ -167,6 +168,17 @@ def _counts_and_sections(db: Session, model, report_ids):
 @router.get("/{report_id}", response_model=ReportOut)
 def get_report(report_id: int, db: Session = Depends(get_db)):
     return _get_report_or_404(report_id, db)
+
+
+@router.get("/{report_id}/reviews", response_model=list[ReviewListItem])
+def get_report_reviews(report_id: int, db: Session = Depends(get_db)):
+    _get_report_or_404(report_id, db)
+    return (
+        db.query(Review)
+        .filter(Review.report_id == report_id)
+        .order_by(Review.visit_date.desc())
+        .all()
+    )
 
 
 @router.put("/{report_id}/info", response_model=ReportOut)

@@ -40,9 +40,14 @@ export default function Home() {
     <div className="page">
       <div className="home-head">
         <h1 className="page-title">تقرير جديد</h1>
-        <button type="button" className="btn-secondary" onClick={() => navigate('/reports')}>
-          📋 كل التقارير
-        </button>
+        <div className="home-head-actions">
+          <button type="button" className="btn-secondary" onClick={() => navigate('/reports')}>
+            📋 كل التقارير
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => navigate('/reviews')}>
+            🔁 تقارير المراجعة
+          </button>
+        </div>
       </div>
 
       <div className="field">

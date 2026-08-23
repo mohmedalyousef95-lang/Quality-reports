@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from .database import Base, engine
 from .migrations import run_migrations
 from .services.excel_import import import_schools, seed_checklist_items, seed_note_suggestions
-from .routers import auth_router, schools, checklist, reports
+from .routers import auth_router, schools, checklist, reports, reviews
 
 Base.metadata.create_all(bind=engine)
 run_migrations()
@@ -32,6 +32,7 @@ app.include_router(auth_router.router)
 app.include_router(schools.router)
 app.include_router(checklist.router)
 app.include_router(reports.router)
+app.include_router(reviews.router)
 
 default_frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST_PATH", default_frontend_dist))
